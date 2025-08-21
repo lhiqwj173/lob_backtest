@@ -1,0 +1,38 @@
+# {{ AURA-X | Action: Add | Reason: 创建回测配置文件，定义所有可调参数 | Approval: Cunzhi(ID:1735632000) }}
+# 订单簿级别撮合回测配置文件
+
+# 数据源配置
+data:
+  lob_data_path: ""  # 十档盘口数据路径
+  signal_data_path: ""  # 深度学习信号数据路径
+  timezone: "Asia/Shanghai"  # 强制使用北京时间
+
+# 信号配置
+signal:
+  source: "predict"  # target/predict - 信号源选择
+  predict_threshold: "max"  # max/数值 - 预测触发阈值策略
+  
+# {{ AURA-X | Action: Modify | Reason: 修复数值类型，确保YAML正确解析数值 | Approval: Cunzhi(ID:1735632000) }}
+# 交易配置
+trading:
+  delay_ticks: 0  # 延迟tick数，默认下一个tick成交
+  commission_rate: 0.00005  # 手续费率（万分之五）
+  all_in_mode: true  # 全仓模式
+  initial_capital: 1000000  # 初始资金
+  
+# 撮合引擎配置
+matching:
+  order_type: "market"  # 市价单
+  slippage_model: "market_impact"  # 滑点模型
+  use_all_levels: true  # 使用全部档位撮合
+  
+# 性能分析配置
+analysis:
+  benchmark: "buy_and_hold"  # 基准策略
+  output_dir: "results"  # 结果输出目录
+  
+# 可视化配置
+visualization:
+  enable: true
+  save_plots: true
+  plot_format: "png"

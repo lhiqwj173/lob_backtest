@@ -1,0 +1,19 @@
+# {{ AURA-X | Action: Add | Reason: 创建项目依赖文件，包含高性能计算和数据处理库 | Approval: Cunzhi(ID:1735632000) }}
+# 数据处理核心库
+pandas>=2.0.0
+numpy>=1.24.0
+pytz>=2023.3
+
+# 高性能计算
+numba>=0.58.0
+
+# 配置管理
+PyYAML>=6.0
+
+# 可视化
+matplotlib>=3.7.0
+lightweight-charts>=2.0.0
+
+# 开发工具
+pytest>=7.4.0
+black>=23.0.0
