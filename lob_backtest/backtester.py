@@ -54,7 +54,7 @@ class LOBBacktester:
         self.analyzer = PerformanceAnalyzer()
         self.visualizer = BacktestVisualizer()
         self.debug_mode = self.config.get('backtest.debug', False)
-        self.debug_records = []
+        self.records = []
         
         # 从配置中获取参数
         lob_data_path = self.config.get('data.lob_data_path')
@@ -134,7 +134,16 @@ class LOBBacktester:
                 # 获取LOB数据用于交互式可视化
                 lob_data = self._load_lob_data(lob_data_path, stock_id, start_timestamp, end_timestamp)
                 # 获取信号数据用于交互式可视化
-                signal_data = self._load_signal_data(signal_data_path)
+                # 字段:
+                # 'datetime'
+                # 'timestamp'
+                # 'engine_has_pos'
+                # 'target'
+                # 'predict'
+                # 'signal_has_pos'
+                # 'ask1_price'
+                # 'bid1_price'
+                signal_data = pd.DataFrame(self.records)[['datetime', 'target', 'predict']]
                 
                 # --- 为交互式图表准备持仓(pos)数据 ---
                 asset_history_df = pd.DataFrame(self.engine.asset_history)
@@ -189,26 +198,25 @@ class LOBBacktester:
                     
                     # 合并信号数据
                     if signal_data is not None and not signal_data.empty:
-                        if 'timestamp' in signal_data.columns:
-                            signal_data['datetime'] = pd.to_datetime(signal_data['timestamp'], unit='s')
-                            signal_data = signal_data.set_index('datetime').sort_index()
-                            # 只合并需要的列
-                            predict_cols = ['predict', 'target']
-                            cols_to_merge = [col for col in predict_cols if col in signal_data.columns]
-                            if cols_to_merge:
-                                asset_history_df = pd.merge_asof(
-                                    left=asset_history_df,
-                                    right=signal_data[cols_to_merge],
-                                    left_index=True,
-                                    right_index=True,
-                                    direction='nearest',
-                                    tolerance=pd.Timedelta('3s')
-                                )
+                        signal_data['datetime'] = pd.to_datetime(signal_data['datetime'])
+                        signal_data = signal_data.set_index('datetime').sort_index()
+                        # 只合并需要的列
+                        predict_cols = ['predict', 'target']
+                        cols_to_merge = [col for col in predict_cols if col in signal_data.columns]
+                        if cols_to_merge:
+                            asset_history_df = pd.merge_asof(
+                                left=asset_history_df,
+                                right=signal_data[cols_to_merge],
+                                left_index=True,
+                                right_index=True,
+                                direction='nearest',
+                                tolerance=pd.Timedelta('3s')
+                            )
                     
                     # 填充缺失值
                     asset_history_df.ffill(inplace=True)
                     asset_history_df.bfill(inplace=True)
-                    
+
                     print("正在启动交互式图表...")
                     plot_interactive_chart(
                         data=asset_history_df,
@@ -346,9 +354,7 @@ class LOBBacktester:
             self.engine.update_market_data(lob_snapshot, timestamp)
 
             # 强制平仓逻辑
-            # datetime.utcfromtimestamp() 将时间戳视为UTC时间，
-            # 避免重复应用本地时区转换。
-            current_time = datetime.utcfromtimestamp(timestamp)
+            current_time = datetime.fromtimestamp(timestamp)
 
             # 每日中午收盘前10秒
             if rest_force_close and (current_time.hour == 11 and current_time.minute == 29 and current_time.second >= 50):
@@ -373,20 +379,19 @@ class LOBBacktester:
                     signal = int(signal_info['signal'])
                     self.engine.submit_signal(signal, signal_info, timestamp)
 
-            # Debug 模式记录
-            if self.debug_mode:
-                engine_has_pos = 1 if self.engine.position.volume > 0 else 0
-                chosen_signal_info = signal_info_pos1 if engine_has_pos else signal_info_pos0
-                
-                self.debug_records.append({
-                    'datetime': datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S.%f'),
-                    'timestamp': timestamp,
-                    'engine_has_pos': engine_has_pos,
-                    'signal': chosen_signal_info.get('signal', -1),
-                    'signal_has_pos': chosen_signal_info.get('has_pos', -1),
-                    'ask1_price': lob_snapshot['asks'][0][0] if lob_snapshot['asks'] else 0,
-                    'bid1_price': lob_snapshot['bids'][0][0] if lob_snapshot['bids'] else 0,
-                })
+            # 记录数据
+            engine_has_pos = 1 if self.engine.position.volume > 0 else 0
+            chosen_signal_info = signal_info_pos1 if engine_has_pos else signal_info_pos0
+            self.records.append({
+                'datetime': datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S.%f'),
+                'timestamp': timestamp,
+                'engine_has_pos': engine_has_pos,
+                'target': chosen_signal_info.get('target', -1),
+                'predict': chosen_signal_info.get('signal', -1),
+                'signal_has_pos': chosen_signal_info.get('has_pos', -1),
+                'ask1_price': lob_snapshot['asks'][0][0] if lob_snapshot['asks'] else 0,
+                'bid1_price': lob_snapshot['bids'][0][0] if lob_snapshot['bids'] else 0,
+            })
             
             # 进度显示
             if (i + 1) % 1000 == 0 or i == total_records - 1:
@@ -450,8 +455,8 @@ class LOBBacktester:
         print(f"性能指标已保存: {metrics_file}")
 
         # 保存Debug记录
-        if self.debug_mode and self.debug_records:
-            debug_df = pd.DataFrame(self.debug_records)
+        if self.debug_mode and self.records:
+            debug_df = pd.DataFrame(self.records)
             debug_file = os.path.join(output_dir, f"{symbol}_debug_records.csv")
             debug_df.to_csv(debug_file, index=False)
             print(f"Debug记录已保存: {debug_file}")
