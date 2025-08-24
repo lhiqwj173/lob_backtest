@@ -16,7 +16,7 @@ from .data.signal_data_loader import SignalDataLoader
 from .engine.matching_engine import MatchingEngine
 from .analysis.performance_metrics import PerformanceAnalyzer
 from .analysis.visualization import BacktestVisualizer
-
+from .analysis.interactive_chart import plot_interactive_chart
 
 class LOBBacktester:
     """订单簿级别回测系统主类"""
@@ -136,14 +136,86 @@ class LOBBacktester:
                 # 获取信号数据用于交互式可视化
                 signal_data = self._load_signal_data(signal_data_path)
                 
-                self.visualizer.create_interactive_chart(
-                    self.engine.asset_history,
-                    self.engine.trades,
-                    lob_data,
-                    signal_data,
-                    stock_id,
-                    output_dir
-                )
+                # --- 为交互式图表准备持仓(pos)数据 ---
+                asset_history_df = pd.DataFrame(self.engine.asset_history)
+                if not asset_history_df.empty:
+                    asset_history_df['timestamp'] = pd.to_datetime(asset_history_df['timestamp'])
+                    asset_history_df = asset_history_df.set_index('timestamp').sort_index()
+                    
+                    asset_history_df['pos'] = 0.0
+                    for trade in self.engine.trades:
+                        if trade.open_deal_timestamp and trade.close_deal_timestamp:
+                            open_time = pd.Timestamp(trade.open_deal_timestamp)
+                            close_time = pd.Timestamp(trade.close_deal_timestamp)
+                            mask = (asset_history_df.index >= open_time) & (asset_history_df.index < close_time)
+                            asset_history_df.loc[mask, 'pos'] = trade.open_deal_vol
+                    
+                    # 将处理后的DataFrame转回字典列表
+                    asset_history_df = asset_history_df.reset_index()
+                    # 保持 'timestamp' 列，同时为 interactive_chart 添加 'time' 列
+                    asset_history_df['time'] = asset_history_df['timestamp']
+                    asset_history_with_pos = asset_history_df.to_dict('records')
+                else:
+                    asset_history_with_pos = []
+
+                # 为交互式图表准备数据
+                asset_history_df = pd.DataFrame(asset_history_with_pos)
+                if not asset_history_df.empty:
+                    asset_history_df['timestamp'] = pd.to_datetime(asset_history_df['timestamp'])
+                    asset_history_df = asset_history_df.set_index('timestamp').sort_index()
+                    
+                    # 标准化净值
+                    asset_history_df['asset'] = asset_history_df['asset'] / asset_history_df['asset'].iloc[0]
+                    asset_history_df['benchmark'] = asset_history_df['benchmark'] / asset_history_df['benchmark'].iloc[0]
+                    
+                    # 计算回撤
+                    running_max = asset_history_df['asset'].expanding().max()
+                    asset_history_df['drawdown'] = (asset_history_df['asset'] - running_max) / running_max
+                    
+                    # 合并订单簿数据
+                    if lob_data is not None and not lob_data.empty:
+                        if 'timestamp' in lob_data.columns:
+                            # 去掉时区，且保留时间
+                            lob_data['datetime'] = lob_data['时间'].dt.tz_localize(None)
+                            lob_data = lob_data.set_index('datetime').sort_index()
+                            asset_history_df = pd.merge_asof(
+                                left=asset_history_df,
+                                right=lob_data[['买1价', '卖1价']],
+                                left_index=True,
+                                right_index=True,
+                                direction='nearest',
+                                tolerance=pd.Timedelta('3s')
+                            )
+                    
+                    # 合并信号数据
+                    if signal_data is not None and not signal_data.empty:
+                        if 'timestamp' in signal_data.columns:
+                            signal_data['datetime'] = pd.to_datetime(signal_data['timestamp'], unit='s')
+                            signal_data = signal_data.set_index('datetime').sort_index()
+                            # 只合并需要的列
+                            predict_cols = ['predict', 'target']
+                            cols_to_merge = [col for col in predict_cols if col in signal_data.columns]
+                            if cols_to_merge:
+                                asset_history_df = pd.merge_asof(
+                                    left=asset_history_df,
+                                    right=signal_data[cols_to_merge],
+                                    left_index=True,
+                                    right_index=True,
+                                    direction='nearest',
+                                    tolerance=pd.Timedelta('3s')
+                                )
+                    
+                    # 填充缺失值
+                    asset_history_df.ffill(inplace=True)
+                    asset_history_df.bfill(inplace=True)
+                    
+                    print("正在启动交互式图表...")
+                    plot_interactive_chart(
+                        data=asset_history_df,
+                        trades=self.engine.trades,
+                        symbol=stock_id,
+                        output_dir=output_dir
+                    )
         
         print(f"\n=== 回测完成 ===")
         self._print_summary(metrics)

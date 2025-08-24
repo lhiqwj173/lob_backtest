@@ -12,16 +12,11 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import os
 
-# 添加 lightweight_charts 导入
-from .interactive_chart import InteractiveChart
-
 
 class BacktestVisualizer:
     """回测结果可视化器
     
-    提供两种可视化方式：
-    1. 静态图表：使用matplotlib生成的PNG图片报告
-    2. 交互式图表：使用lightweight_charts创建的交互式网页图表
+    提供静态图表：使用matplotlib生成的PNG图片报告
     """
     
     def __init__(self, figsize: tuple = (15, 10), style: str = 'seaborn-v0_8'):
@@ -111,116 +106,6 @@ class BacktestVisualizer:
         if show_plot:
             plt.show()
     
-    def create_interactive_chart(self, asset_history: List[Dict],
-                                trades: List,
-                                order_book_data: Optional[pd.DataFrame] = None,
-                                predict_data: Optional[pd.DataFrame] = None,
-                                symbol: str = "Asset",
-                                output_dir: str = "results") -> None:
-        """
-        创建交互式图表
-        
-        Args:
-            asset_history: 资产净值历史
-            trades: 交易记录
-            order_book_data: 订单簿数据（可选）
-            predict_data: 预测数据（可选）
-            symbol: 标的符号
-            output_dir: 输出目录
-        """
-        if not asset_history:
-            print("无资产历史数据，跳过可视化")
-            return
-        
-        # 确保输出目录存在
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # 转换资产历史数据
-        asset_df = pd.DataFrame(asset_history)
-        # 检查 timestamp 列的类型并进行相应处理
-        if not pd.api.types.is_datetime64_any_dtype(asset_df['timestamp']):
-            asset_df['timestamp'] = pd.to_datetime(asset_df['timestamp'])
-        asset_df = asset_df.set_index('timestamp').sort_index()
-        
-        # 标准化净值
-        asset_df['asset'] = asset_df['asset'] / asset_df['asset'].iloc[0]
-        asset_df['benchmark'] = asset_df['benchmark'] / asset_df['benchmark'].iloc[0]
-        
-        # 计算回撤
-        asset_df['drawdown'] = self._calculate_drawdown(asset_df['asset'])
-        
-        # 如果有订单簿数据，则合并数据
-        if order_book_data is not None:
-            # 确保订单簿数据有时间戳列
-            if 'timestamp' in order_book_data.columns:
-                # 直接使用时间戳列创建datetime索引，不经过pd.to_datetime转换
-                # 将Unix时间戳转换为无时区的datetime对象（本地时间）
-                order_book_data['datetime'] = pd.to_datetime(order_book_data['timestamp'], unit='s')
-                order_book_data = order_book_data.set_index('datetime').sort_index()
-                # 合并数据
-                # 使用 merge_asof 解决时间戳不完全对齐的问题
-                merged_df = pd.merge_asof(
-                    left=order_book_data.sort_index(),
-                    right=asset_df.sort_index(),
-                    left_index=True,
-                    right_index=True,
-                    direction='nearest',  # 寻找最近的时间戳
-                    tolerance=pd.Timedelta('1s')  # 设置1秒的容忍范围
-                )
-            else:
-                print("订单簿数据缺少时间戳列，无法合并数据")
-                merged_df = asset_df.copy()
-        else:
-            print("订单簿数据为空")
-            merged_df = asset_df.copy()
-        
-        # 添加持仓数据
-        merged_df['pos'] = 0.0
-        if trades:
-            # print(f"交易记录不为空，数量: {len(trades)}")
-            for trade in trades:
-                if trade.open_deal_timestamp and trade.close_deal_timestamp:
-                    # 转换为 pandas Timestamp 对象
-                    open_time = pd.Timestamp(trade.open_deal_timestamp)
-                    close_time = pd.Timestamp(trade.close_deal_timestamp)
-                    
-                    # 在持仓期间设置持仓量
-                    mask = (merged_df.index >= open_time) & (merged_df.index < close_time)
-                    merged_df.loc[mask, 'pos'] = trade.open_deal_vol
-        else:
-            print("交易记录为空")
-        
-        # 如果有预测数据，则合并
-        if predict_data is not None:
-            # 直接使用时间戳列创建datetime索引，不经过pd.to_datetime转换
-            # 将Unix时间戳转换为无时区的datetime对象（本地时间）
-            predict_data['datetime'] = pd.to_datetime(predict_data['timestamp'], unit='s')
-            predict_data = predict_data.set_index('datetime').sort_index()
-            # 使用 merge_asof 进行合并
-            merged_df = pd.merge_asof(
-                left=merged_df.sort_index(),
-                right=predict_data.sort_index(),
-                left_index=True,
-                right_index=True,
-                direction='nearest',
-                tolerance=pd.Timedelta('1s')
-            )
-        else:
-            print("预测数据为空")
-        
-        # 添加辅助列
-        merged_df['hl1'] = 1
-        # 确保 'time' 列是 Unix 时间戳
-        merged_df['time'] = merged_df.index.astype(np.int64) // 10**9
-        
-        # 创建交互式图表
-        chart = InteractiveChart(
-            data=merged_df,
-            trades=trades,
-            symbol=symbol,
-            output_dir=output_dir
-        )
-        chart.show()
     def _plot_nav_curves(self, ax, df: pd.DataFrame) -> None:
         """绘制净值曲线"""
         ax.plot(df.index, df['strategy_nav'], label='策略净值', linewidth=2, color='#e74c3c')
