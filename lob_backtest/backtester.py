@@ -176,7 +176,7 @@ class LOBBacktester:
                     if lob_data is not None and not lob_data.empty:
                         if 'timestamp' in lob_data.columns:
                             # 去掉时区，且保留时间
-                            lob_data['datetime'] = lob_data['时间'].dt.tz_localize(None)
+                            lob_data['datetime'] = lob_data['datetime'].dt.tz_localize(None)
                             lob_data = lob_data.set_index('datetime').sort_index()
                             asset_history_df = pd.merge_asof(
                                 left=asset_history_df,

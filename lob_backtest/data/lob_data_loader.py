@@ -62,12 +62,12 @@ class LOBDataLoader:
 
         # 合并所有数据
         full_data = pd.concat(all_data, ignore_index=True)
-        full_data = full_data.sort_values('时间').reset_index(drop=True)
+        full_data = full_data.sort_values('datetime').reset_index(drop=True)
 
         # 转换为时间戳并进行最终过滤
         # 移除毫秒，确保时间戳与信号数据对齐
-        full_data['时间'] = full_data['时间'].dt.floor('S')
-        full_data['timestamp'] = full_data['时间'].apply(lambda x: int(x.timestamp()))
+        full_data['datetime'] = full_data['datetime'].dt.floor('S')
+        full_data['timestamp'] = full_data['datetime'].apply(lambda x: int(x.timestamp()))
         
         full_data = full_data[
             (full_data['timestamp'] >= start_timestamp) &
@@ -92,11 +92,15 @@ class LOBDataLoader:
                 raise ValueError("无法使用任何支持的编码格式读取文件")
 
             data = data.drop_duplicates(keep='first')
+            # 原始数据列名 "时间" -> "datetime"
+            if '时间' in data.columns:
+                data = data.rename(columns={'时间': 'datetime'})
+
             # 将时间字符串转换为无时区的datetime对象。
             # 后续调用 .timestamp() 时，Pandas/Python会隐式使用本地系统时区（北京时间）
             # 来计算Unix时间戳，这符合项目要求。
             # 将时间字符串转换为datetime对象，并明确指定为北京时间
-            data['时间'] = pd.to_datetime(data['时间'], errors='coerce').dt.tz_localize('Asia/Shanghai')
+            data['datetime'] = pd.to_datetime(data['datetime'], errors='coerce').dt.tz_localize('Asia/Shanghai')
             data = self._filter_trading_hours(data, "09:30", "15:00")
 
             if len(data) == 0 or self._check_limit_up_down(data):
@@ -119,14 +123,14 @@ class LOBDataLoader:
         end_dt = pd.to_datetime(end_time).time()
         
         data = data[
-            (data["时间"].dt.time >= begin_dt) & 
-            (data["时间"].dt.time < end_dt)
+            (data["datetime"].dt.time >= begin_dt) &
+            (data["datetime"].dt.time < end_dt)
         ].reset_index(drop=True)
         
         # 排除午休时间 (11:30-13:00)
         data = data[
-            (data["时间"].dt.time <= pd.to_datetime('11:30:00').time()) | 
-            (data["时间"].dt.time > pd.to_datetime('13:00:00').time())
+            (data["datetime"].dt.time <= pd.to_datetime('11:30:00').time()) |
+            (data["datetime"].dt.time > pd.to_datetime('13:00:00').time())
         ].reset_index(drop=True)
         
         return data

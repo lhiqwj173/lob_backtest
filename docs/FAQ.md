@@ -44,7 +44,7 @@ with codecs.open('output.csv', 'w', 'utf-8') as f:
 ```
 
 ### Q5: 时间戳格式不匹配
-**A:** 确保LOB数据的时间格式为 `%Y-%m-%d %H:%M:%S`，信号数据的时间戳为秒级UTC时间戳。
+**A:** 确保LOB数据的 `datetime` 列格式为 `%Y-%m-%d %H:%M:%S`，信号数据的 `timestamp` 列为秒级UTC时间戳。
 
 ### Q6: 数据量太大导致内存不足
 **A:** 对于大规模数据，建议：

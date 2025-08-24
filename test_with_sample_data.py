@@ -50,7 +50,7 @@ def generate_sample_lob_data(start_time: datetime, duration_hours: int = 6.5,
         
         # 生成十档数据
         row = {
-            '时间': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'datetime': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
             'timestamp': int(timestamp.timestamp())  # 使用本地时间生成Unix时间戳
         }
         
@@ -174,7 +174,7 @@ def save_sample_data(lob_data: pd.DataFrame, signal_data: pd.DataFrame,
     # --- LOB数据保存逻辑修改 ---
     # LOBDataLoader期望的目录结构: output_dir/YYYYMMDD/symbol/十档盘口.csv
     # 从LOB数据中获取日期用于创建目录
-    date_str = pd.to_datetime(lob_data['时间'].iloc[0]).strftime('%Y%m%d')
+    date_str = pd.to_datetime(lob_data['datetime'].iloc[0]).strftime('%Y%m%d')
     lob_target_dir = os.path.join(output_dir, date_str, symbol)
     os.makedirs(lob_target_dir, exist_ok=True)
     
