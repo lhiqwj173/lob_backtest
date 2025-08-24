@@ -52,8 +52,7 @@ class MatchingEngine:
     
     def __init__(self, initial_capital: float = 1000000.0,
                  commission_rate: float = 5e-5,
-                 delay_ticks: int = 0,
-                 timezone: str = "Asia/Shanghai"):
+                 delay_ticks: int = 0):
         """
         初始化撮合引擎
         
@@ -61,13 +60,11 @@ class MatchingEngine:
             initial_capital: 初始资金
             commission_rate: 手续费率
             delay_ticks: 延迟tick数
-            timezone: 时区
         """
         self.initial_capital = initial_capital
         self.current_capital = initial_capital
         self.commission_rate = commission_rate
         self.delay_ticks = delay_ticks
-        self.timezone = pytz.timezone(timezone)
         
         # 交易状态
         self.position = Position()
@@ -113,7 +110,9 @@ class MatchingEngine:
         Returns:
             是否成功提交订单
         """
-        current_time = datetime.fromtimestamp(timestamp, tz=self.timezone)
+        # datetime.fromtimestamp() 会隐式使用本地系统时区（北京时间），
+        # 这符合将Unix时间戳转换为本地时间的要求。
+        current_time = datetime.fromtimestamp(timestamp)
         
         # 检查信号有效性
         if not self._is_valid_signal(signal, signal_info):
@@ -198,7 +197,8 @@ class MatchingEngine:
 
     def _process_pending_orders(self, current_timestamp: int) -> None:
         """处理延迟订单队列"""
-        executed_orders = []
+        remaining_orders = []
+        executed_something = False
 
         for order in self.pending_orders:
             if current_timestamp >= order['execute_time']:
@@ -206,11 +206,13 @@ class MatchingEngine:
                     self._execute_buy_order(order)
                 elif order['type'] == 'sell':
                     self._execute_sell_order(order)
-                executed_orders.append(order)
-
-        # 移除已执行的订单
-        for order in executed_orders:
-            self.pending_orders.remove(order)
+                executed_something = True
+            else:
+                remaining_orders.append(order)
+        
+        # 如果有订单被执行，则更新订单列表
+        if executed_something:
+            self.pending_orders = remaining_orders
 
     def _execute_buy_order(self, order: Dict) -> None:
         """执行买入订单"""
@@ -253,7 +255,7 @@ class MatchingEngine:
         self.total_commission += commission
 
         # 创建交易记录
-        deal_time = datetime.fromtimestamp(order['execute_time'], tz=self.timezone)
+        deal_time = datetime.fromtimestamp(order['execute_time'])
 
         self.current_trade = Trade(
             symbol="",  # 将在外部设置
@@ -298,7 +300,7 @@ class MatchingEngine:
         self.total_commission += commission
 
         # 完成交易记录
-        deal_time = datetime.fromtimestamp(order['execute_time'], tz=self.timezone)
+        deal_time = datetime.fromtimestamp(order['execute_time'])
 
         self.current_trade.close_order_timestamp = order['order_time']
         self.current_trade.close_deal_timestamp = deal_time
@@ -327,7 +329,7 @@ class MatchingEngine:
 
     def _update_asset_value(self, timestamp: int) -> None:
         """更新资产净值记录"""
-        current_time = datetime.fromtimestamp(timestamp, tz=self.timezone)
+        current_time = datetime.fromtimestamp(timestamp)
 
         # 计算当前总资产
         total_asset = self.current_capital
@@ -371,7 +373,7 @@ class MatchingEngine:
     def force_close_position(self, timestamp: int) -> None:
         """强制平仓（回测结束时调用）"""
         if self.position.volume > 0:
-            current_time = datetime.fromtimestamp(timestamp, tz=self.timezone)
+            current_time = datetime.fromtimestamp(timestamp)
 
             # 创建强制平仓订单
             order = {

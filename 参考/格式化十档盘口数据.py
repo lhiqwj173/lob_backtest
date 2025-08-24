@@ -1,4 +1,4 @@
-import os, datetime, pytz
+import os, datetime
 import numpy as np
 import pandas as pd
 
@@ -13,7 +13,7 @@ def fix_raw_data(date, code, result_folder):
     if os.path.exists(result_file_name):
         return
 
-    print(f'fix_raw_data: {date} {code}', flush=True)
+    # print(f'fix_raw_data: {date} {code}', flush=True)
 
     file = os.path.join(folder, date, code, '十档盘口.csv')
     begin_t = os.environ.get('train_data_begin_time', '09:30')
@@ -33,7 +33,7 @@ def fix_raw_data(date, code, result_folder):
         _data = _data[(_data["时间"].dt.time <= pd.to_datetime('11:30:00').time()) | (
             _data["时间"].dt.time > pd.to_datetime('13:00:00').time())].reset_index(drop=True)
         if len(_data) == 0:
-            print(f'fix_raw_data: {date} {code} 没有数据')
+            # print(f'fix_raw_data: {date} {code} 没有数据')
             return
 
         # 判断是否有 涨跌停
@@ -41,7 +41,7 @@ def fix_raw_data(date, code, result_folder):
         zt = ((_data['卖1价'] == 0) & (_data['卖1量'] == 0)).any()
         dt = ((_data['买1价'] == 0) & (_data['买1量'] == 0)).any()
         if zt or dt:
-            print(f'fix_raw_data: {date} {code} 存在涨跌停')
+            # print(f'fix_raw_data: {date} {code} 存在涨跌停')
             return
 
         _data = _data.reset_index(drop=True)
@@ -74,4 +74,4 @@ def fix_raw_data(date, code, result_folder):
         return _data
 
     else:
-        print(f'{date} {code} 没有数据, {file} 不存在')
+        # print(f'{date} {code} 没有数据, {file} 不存在')

@@ -41,6 +41,8 @@ mobilenet_v2_data_v6/
 temp/
 sample_data/
 results/
+test_data/
+test_results/
 
 *.pkl
 *.csv

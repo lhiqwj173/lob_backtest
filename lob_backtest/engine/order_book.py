@@ -60,8 +60,9 @@ class OrderBook:
     
     def __init__(self):
         """初始化订单簿"""
-        self.bids = []  # 买盘 [(price, volume), ...] 按价格从高到低
-        self.asks = []  # 卖盘 [(price, volume), ...] 按价格从低到高
+        # 使用Numpy数组存储订单簿，格式为 [price, volume]
+        self.bids = np.empty((0, 2), dtype=np.float64)
+        self.asks = np.empty((0, 2), dtype=np.float64)
         self.last_update_time = 0
     
     def update_snapshot(self, snapshot: Dict) -> None:
@@ -71,21 +72,26 @@ class OrderBook:
         Args:
             snapshot: 包含bids和asks的快照数据
         """
-        self.bids = snapshot.get('bids', [])
-        self.asks = snapshot.get('asks', [])
+        bids_data = snapshot.get('bids', [])
+        asks_data = snapshot.get('asks', [])
+        
+        self.bids = np.array(bids_data, dtype=np.float64)
+        self.asks = np.array(asks_data, dtype=np.float64)
         self.last_update_time = snapshot.get('timestamp', 0)
         
-        # 确保排序正确
-        self.bids.sort(key=lambda x: x[0], reverse=True)  # 买盘按价格从高到低
-        self.asks.sort(key=lambda x: x[0])  # 卖盘按价格从低到高
+        # 使用Numpy进行高效排序
+        if self.bids.size > 0:
+            self.bids = self.bids[np.argsort(self.bids[:, 0])[::-1]]
+        if self.asks.size > 0:
+            self.asks = self.asks[np.argsort(self.asks[:, 0])]
     
     def get_best_bid(self) -> Optional[Tuple[float, float]]:
         """获取最优买价"""
-        return self.bids[0] if self.bids else None
+        return (self.bids[0, 0], self.bids[0, 1]) if self.bids.size > 0 else None
     
     def get_best_ask(self) -> Optional[Tuple[float, float]]:
         """获取最优卖价"""
-        return self.asks[0] if self.asks else None
+        return (self.asks[0, 0], self.asks[0, 1]) if self.asks.size > 0 else None
     
     def get_mid_price(self) -> Optional[float]:
         """获取中间价"""
@@ -115,7 +121,7 @@ class OrderBook:
         Returns:
             成交结果字典
         """
-        if not self.asks or volume <= 0:
+        if self.asks.size == 0 or volume <= 0:
             return {
                 'success': False,
                 'filled_volume': 0.0,
@@ -123,41 +129,23 @@ class OrderBook:
                 'total_cost': 0.0,
                 'remaining_volume': volume
             }
-        
-        # {{ AURA-X | Action: Modify | Reason: 简化并强化类型转换，移除Numba依赖 | Approval: Cunzhi(ID:1735632000) }}
-        # 准备数据并直接计算（避免Numba类型问题）
-        total_cost = 0.0
-        filled_volume = 0.0
-        remaining_volume = float(volume)
 
-        # 直接遍历asks进行撮合计算
-        for ask_price, ask_volume in self.asks:
-            if remaining_volume <= 0:
-                break
+        # 直接使用内部的Numpy数组调用Numba优化函数
+        avg_price, filled_volume = calculate_market_impact(
+            self.asks[:, 0], self.asks[:, 1], float(volume)
+        )
 
-            ask_price = float(ask_price)
-            ask_volume = float(ask_volume)
-
-            if ask_volume <= 0:
-                continue
-
-            # 本档位可成交数量
-            fill_volume = min(remaining_volume, ask_volume)
-
-            # 累计成本和数量
-            total_cost += fill_volume * ask_price
-            filled_volume += fill_volume
-            remaining_volume -= fill_volume
-
-        # 计算平均价格
+        # 整理返回结果
         if filled_volume > 0:
-            avg_price = total_cost / filled_volume
+            total_cost = avg_price * filled_volume
+            success = True
         else:
-            avg_price = 0.0
             total_cost = 0.0
+            avg_price = 0.0
+            success = False
 
         return {
-            'success': filled_volume > 0,
+            'success': success,
             'filled_volume': filled_volume,
             'avg_price': avg_price,
             'total_cost': total_cost,
@@ -175,7 +163,7 @@ class OrderBook:
         Returns:
             成交结果字典
         """
-        if not self.bids or volume <= 0:
+        if self.bids.size == 0 or volume <= 0:
             return {
                 'success': False,
                 'filled_volume': 0.0,
@@ -183,41 +171,23 @@ class OrderBook:
                 'total_cost': 0.0,
                 'remaining_volume': volume
             }
-        
-        # {{ AURA-X | Action: Modify | Reason: 简化并强化类型转换，移除Numba依赖 | Approval: Cunzhi(ID:1735632000) }}
-        # 准备数据并直接计算（避免Numba类型问题）
-        total_cost = 0.0
-        filled_volume = 0.0
-        remaining_volume = float(volume)
 
-        # 直接遍历bids进行撮合计算
-        for bid_price, bid_volume in self.bids:
-            if remaining_volume <= 0:
-                break
+        # 直接使用内部的Numpy数组调用Numba优化函数
+        avg_price, filled_volume = calculate_market_impact(
+            self.bids[:, 0], self.bids[:, 1], float(volume)
+        )
 
-            bid_price = float(bid_price)
-            bid_volume = float(bid_volume)
-
-            if bid_volume <= 0:
-                continue
-
-            # 本档位可成交数量
-            fill_volume = min(remaining_volume, bid_volume)
-
-            # 累计成本和数量
-            total_cost += fill_volume * bid_price
-            filled_volume += fill_volume
-            remaining_volume -= fill_volume
-
-        # 计算平均价格
+        # 整理返回结果
         if filled_volume > 0:
-            avg_price = total_cost / filled_volume
+            total_cost = avg_price * filled_volume
+            success = True
         else:
-            avg_price = 0.0
             total_cost = 0.0
+            avg_price = 0.0
+            success = False
 
         return {
-            'success': filled_volume > 0,
+            'success': success,
             'filled_volume': filled_volume,
             'avg_price': avg_price,
             'total_cost': total_cost,
@@ -259,9 +229,9 @@ class OrderBook:
             价格和数量的列表
         """
         if side == 'bid':
-            return self.bids[:max_levels]
+            return [tuple(row) for row in self.bids[:max_levels]]
         elif side == 'ask':
-            return self.asks[:max_levels]
+            return [tuple(row) for row in self.asks[:max_levels]]
         else:
             raise ValueError("side must be 'bid' or 'ask'")
     

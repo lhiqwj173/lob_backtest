@@ -11,11 +11,14 @@
 ### 软件要求
 - **操作系统**: Windows 10+, macOS 10.14+, Ubuntu 18.04+
 - **Python**: 3.8 - 3.11 (推荐 3.9)
+- **环境管理**: `pip` with `venv` (推荐) 或 `Conda`
 - **Git**: 用于代码管理 (可选)
 
 ## 安装步骤
 
 ### 1. Python环境准备
+
+我们推荐使用 `venv` 或 `Conda` 创建独立的 Python 环境。
 
 #### Windows系统
 ```bash
@@ -62,14 +65,15 @@ pip3.9 --version
 2. 解压到目标目录
 3. 进入项目目录
 
-#### 方式二: Git克隆 (如果有Git仓库)
+#### 方式二: Git克隆
 ```bash
-git clone <repository-url>
+git clone https://github.com/Cunzhi/LOB-backtest.git
 cd lob_backtest
 ```
 
 ### 3. 创建虚拟环境 (推荐)
 
+#### 使用 venv
 ```bash
 # 创建虚拟环境
 python -m venv lob_env
@@ -80,9 +84,15 @@ lob_env\Scripts\activate
 
 # macOS/Linux
 source lob_env/bin/activate
+```
 
-# 验证虚拟环境
-which python  # 应该指向虚拟环境中的python
+#### 使用 Conda
+```bash
+# 创建Conda环境
+conda create -n lob_env python=3.9
+
+# 激活Conda环境
+conda activate lob_env
 ```
 
 ### 4. 安装依赖包
@@ -176,14 +186,20 @@ sudo yum groupinstall "Development Tools"  # CentOS/RHEL
 pip install numba --no-cache-dir
 ```
 
-### Q3: 内存不足
-**问题**: 运行时内存不足
+### Q3: Apple M1/M2 芯片安装问题
+**问题**: 在 Apple Silicon (M1/M2) 芯片上安装 `numba` 或其他依赖包失败。
 
 **解决方案**:
-1. 关闭其他程序释放内存
-2. 减少测试数据量
-3. 增加虚拟内存
-4. 升级物理内存
+```bash
+# 方案一: 使用 Rosetta 2 模拟 x86_64 环境
+arch -x86_64 /bin/bash -c "python -m venv lob_env_x86"
+source lob_env_x86/bin/activate
+pip install -r requirements.txt
+
+# 方案二: 使用 miniforge (推荐)
+# 安装 miniforge: https://github.com/conda-forge/miniforge
+conda install -c conda-forge numba pandas numpy
+```
 
 ### Q4: 权限问题
 **问题**: 没有写入权限
@@ -192,38 +208,23 @@ pip install numba --no-cache-dir
 ```bash
 # Windows: 以管理员身份运行命令提示符
 # macOS/Linux: 使用sudo (不推荐) 或修改目录权限
-chmod 755 /path/to/lob_backtest
+chmod -R 755 /path/to/lob_backtest
 ```
 
-### Q5: Python版本不兼容
-**问题**: Python版本过低或过高
+## 环境配置 (可选)
 
-**解决方案**:
+为了提升性能，您可以配置以下环境变量：
+
+### Numba 优化
 ```bash
-# 使用pyenv管理多个Python版本
-# 安装pyenv
-curl https://pyenv.run | bash
-
-# 安装Python 3.9
-pyenv install 3.9.18
-pyenv local 3.9.18
-
-# 验证版本
-python --version
-```
-
-## 性能优化配置
-
-### 1. Numba优化
-```bash
-# 设置Numba缓存目录
+# 设置Numba缓存目录 (加速二次启动)
 export NUMBA_CACHE_DIR=/tmp/numba_cache
 
-# 启用并行计算
+# 启用并行计算 (根据CPU核心数调整)
 export NUMBA_NUM_THREADS=4
 ```
 
-### 2. 内存优化
+### 内存优化
 ```bash
 # 设置Pandas内存使用限制
 export PANDAS_MEMORY_LIMIT=4GB
@@ -232,22 +233,15 @@ export PANDAS_MEMORY_LIMIT=4GB
 export PANDAS_USE_MEMORY_MAP=1
 ```
 
-### 3. 多进程配置
-```python
-# 在配置文件中设置
-import multiprocessing
-max_workers = multiprocessing.cpu_count() - 1
-```
-
 ## 开发环境配置
 
-### 1. IDE配置
+### IDE配置
 推荐使用以下IDE:
 - **PyCharm**: 专业Python IDE
 - **VS Code**: 轻量级编辑器
 - **Jupyter Lab**: 交互式开发
 
-### 2. 代码格式化
+### 代码格式化
 ```bash
 # 安装开发工具
 pip install black flake8 isort
@@ -258,17 +252,9 @@ isort .
 flake8 .
 ```
 
-### 3. 调试配置
-```python
-# 在代码中添加调试断点
-import pdb; pdb.set_trace()
-
-# 或使用IDE的调试功能
-```
-
 ## 部署配置
 
-### 1. 生产环境
+### 生产环境
 ```bash
 # 创建生产环境配置
 cp config/backtest_config.yaml config/production_config.yaml
@@ -279,7 +265,7 @@ cp config/backtest_config.yaml config/production_config.yaml
 # - 配置输出目录
 ```
 
-### 2. 容器化部署
+### 容器化部署 (Docker)
 ```dockerfile
 # Dockerfile示例
 FROM python:3.9-slim
@@ -290,16 +276,6 @@ RUN pip install -r requirements.txt
 
 COPY . .
 CMD ["python", "main.py"]
-```
-
-### 3. 服务化部署
-```bash
-# 创建systemd服务文件
-sudo nano /etc/systemd/system/lob-backtest.service
-
-# 启动服务
-sudo systemctl enable lob-backtest
-sudo systemctl start lob-backtest
 ```
 
 ## 卸载指南
@@ -320,16 +296,6 @@ rm -rf lob_backtest
 
 # 清理pip缓存
 pip cache purge
-```
-
-### 3. 清理系统配置
-```bash
-# 删除环境变量 (如果设置了)
-unset NUMBA_CACHE_DIR
-unset PANDAS_MEMORY_LIMIT
-
-# 清理临时文件
-rm -rf /tmp/numba_cache
 ```
 
 ---

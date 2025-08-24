@@ -34,7 +34,11 @@ class BacktestConfig:
             raise FileNotFoundError(f"配置文件不存在: {self.config_path}")
         
         with open(self.config_path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
+            content = f.read()
+        
+        # 预处理文件内容，将所有反斜杠替换为正斜杠，以避免YAML解析错误
+        processed_content = content.replace("\\", "/")
+        config = yaml.safe_load(processed_content)
         
         return config
     
@@ -43,7 +47,7 @@ class BacktestConfig:
         获取配置值，支持点号分隔的嵌套键
         
         Args:
-            key: 配置键，支持 'data.timezone' 格式
+            key: 配置键，支持 'data.lob_data_path' 格式
             default: 默认值
             
         Returns:

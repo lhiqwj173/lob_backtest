@@ -9,14 +9,10 @@ import sys
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import pytz
 from pathlib import Path
 
-# 添加src目录到Python路径
-sys.path.append(str(Path(__file__).parent / "src"))
-
-from main import LOBBacktester
-
+# 从lob_backtest包导入LOBBacktester类
+from lob_backtest import LOBBacktester
 
 def generate_sample_lob_data(start_time: datetime, duration_hours: int = 6.5, 
                            interval_seconds: int = 3) -> pd.DataFrame:
@@ -33,7 +29,7 @@ def generate_sample_lob_data(start_time: datetime, duration_hours: int = 6.5,
     """
     print("正在生成模拟LOB数据...")
     
-    # 生成时间序列
+    # 生成时间序列（本地时间）
     end_time = start_time + timedelta(hours=duration_hours)
     time_range = pd.date_range(start=start_time, end=end_time, freq=f'{interval_seconds}S')
     
@@ -52,9 +48,11 @@ def generate_sample_lob_data(start_time: datetime, duration_hours: int = 6.5,
         spread = np.random.uniform(0.001, 0.003)  # 0.1%-0.3%的价差
         mid_price = current_price
         
-        # {{ AURA-X | Action: Modify | Reason: 修复时间格式，移除时区信息以匹配LOBDataLoader预期格式 | Approval: Cunzhi(ID:1735632000) }}
-        # 生成十档数据（格式化时间为不含时区的字符串）
-        row = {'时间': timestamp.strftime('%Y-%m-%d %H:%M:%S')}
+        # 生成十档数据
+        row = {
+            '时间': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'timestamp': int(timestamp.timestamp())  # 使用本地时间生成Unix时间戳
+        }
         
         # 卖盘（从低到高）
         for level in range(1, 11):
@@ -98,16 +96,16 @@ def generate_sample_signal_data(start_time: datetime, duration_hours: int = 6.5,
     """
     print("正在生成模拟信号数据...")
     
-    # 生成信号时间点
+    # 生成信号时间点（本地时间）
     end_time = start_time + timedelta(hours=duration_hours)
-    signal_times = pd.date_range(start=start_time, end=end_time, 
+    signal_times = pd.date_range(start=start_time, end=end_time,
                                 freq=f'{signal_interval_seconds}S')
     
     data = []
     current_position = 0  # 0=无持仓, 1=有持仓
     
     for timestamp in signal_times:
-        # 转换为UTC时间戳
+        # 使用本地时间生成Unix时间戳
         utc_timestamp = int(timestamp.timestamp())
         
         # 生成随机信号（模拟策略逻辑）
@@ -144,18 +142,28 @@ def generate_sample_signal_data(start_time: datetime, duration_hours: int = 6.5,
         })
     
     df = pd.DataFrame(data)
+    
+    # 重命名 'target' 为 'predict' 以满足可视化工具的需求
+    df.rename(columns={'target': 'predict'}, inplace=True)
+    # 同时创建 'target' 列以满足加载器的需求
+    df['target'] = df['predict']
+    
     print(f"生成了 {len(df)} 条信号记录")
     return df
 
 
-def save_sample_data(lob_data: pd.DataFrame, signal_data: pd.DataFrame, 
-                    output_dir: str = "sample_data") -> tuple:
+def save_sample_data(lob_data: pd.DataFrame, signal_data: pd.DataFrame,
+                     symbol: str, start_timestamp: int, end_timestamp: int,
+                     output_dir: str = "sample_data") -> tuple:
     """
     保存模拟数据到文件
     
     Args:
         lob_data: LOB数据
         signal_data: 信号数据
+        symbol: 交易标的
+        start_timestamp: 开始时间戳
+        end_timestamp: 结束时间戳
         output_dir: 输出目录
         
     Returns:
@@ -163,18 +171,27 @@ def save_sample_data(lob_data: pd.DataFrame, signal_data: pd.DataFrame,
     """
     os.makedirs(output_dir, exist_ok=True)
     
-    # {{ AURA-X | Action: Modify | Reason: 修复编码问题，使用UTF-8编码并添加BOM | Approval: Cunzhi(ID:1735632000) }}
-    # 保存LOB数据（使用UTF-8编码，避免中文乱码）
-    lob_file = os.path.join(output_dir, "sample_lob_data.csv")
-    lob_data.to_csv(lob_file, index=False, encoding='utf-8-sig')  # 使用UTF-8 with BOM
-    print(f"LOB数据已保存到: {lob_file}")
+    # --- LOB数据保存逻辑修改 ---
+    # LOBDataLoader期望的目录结构: output_dir/YYYYMMDD/symbol/十档盘口.csv
+    # 从LOB数据中获取日期用于创建目录
+    date_str = pd.to_datetime(lob_data['时间'].iloc[0]).strftime('%Y%m%d')
+    lob_target_dir = os.path.join(output_dir, date_str, symbol)
+    os.makedirs(lob_target_dir, exist_ok=True)
+    
+    # 保存LOB数据到指定结构中
+    lob_file_path = os.path.join(lob_target_dir, "十档盘口.csv")
+    lob_data.to_csv(lob_file_path, index=False, encoding='utf-8-sig')
+    print(f"LOB数据已保存到: {lob_file_path}")
 
-    # 保存信号数据（使用UTF-8编码）
-    signal_file = os.path.join(output_dir, "sample_signal_data.csv")
+    # --- 信号数据保存逻辑保持不变 ---
+    # 根据回测器要求格式化信号文件名
+    signal_filename = f"{symbol}_{start_timestamp}_{end_timestamp}.csv"
+    signal_file = os.path.join(output_dir, signal_filename)
     signal_data.to_csv(signal_file, index=False, encoding='utf-8')
     print(f"信号数据已保存到: {signal_file}")
     
-    return lob_file, signal_file
+    # 返回LOB数据的基础目录和信号文件的完整路径
+    return output_dir, signal_file
 
 
 def run_sample_test():
@@ -184,11 +201,10 @@ def run_sample_test():
     print("=" * 60)
     
     # 设置测试时间（模拟一个交易日）
-    beijing_tz = pytz.timezone('Asia/Shanghai')
     test_date = datetime(2024, 6, 3, 9, 30, 0)  # 2024年6月3日 9:30
-    test_start = beijing_tz.localize(test_date)
+    test_start = test_date
     
-    print(f"测试时间: {test_start.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+    print(f"测试时间: {test_start.strftime('%Y-%m-%d %H:%M:%S')}")
     
     # 1. 生成模拟数据
     print("\n=== 第1步: 生成模拟数据 ===")
@@ -197,7 +213,13 @@ def run_sample_test():
     
     # 2. 保存数据
     print("\n=== 第2步: 保存测试数据 ===")
-    lob_file, signal_file = save_sample_data(lob_data, signal_data)
+    symbol = "TESTETF"
+    duration_hours = 6.5
+    start_timestamp = int(test_start.timestamp())
+    end_timestamp = int((test_start + timedelta(hours=duration_hours)).timestamp())
+    
+    lob_file, signal_file = save_sample_data(lob_data, signal_data, symbol,
+                                             start_timestamp, end_timestamp)
     
     # 3. 运行回测
     print("\n=== 第3步: 运行回测测试 ===")
@@ -205,19 +227,26 @@ def run_sample_test():
         # 初始化回测系统
         backtester = LOBBacktester()
         
-        # 运行回测
+        # 动态更新配置以适配LOBBacktester
+        # 注意：LOB数据路径应为目录，信号数据路径为文件
+        # LOB数据路径现在是包含日期子目录的根目录
+        backtester.config.set('data.lob_data_path', lob_file)
+        backtester.config.set('data.signal_data_path', signal_file)
+        
+        # 启用Debug模式以进行诊断
+        backtester.config.set('backtest.debug', True)
+        
+        # 运行回测，不传递任何路径或symbol参数
         results = backtester.run_backtest(
-            lob_data_path=lob_file,
-            signal_data_path=signal_file,
-            symbol="TEST_ETF"
+            auto_open_interactive=True
         )
         
         # 4. 显示结果
         print("\n=== 第4步: 测试结果 ===")
         if results and 'metrics' in results:
             metrics = results['metrics']
-            print("✅ 回测成功完成!")
-            print(f"📊 关键指标:")
+            print("回测成功完成!")
+            print(f"关键指标:")
             print(f"   总收益率: {metrics.get('total_return', 0):.2%}")
             print(f"   年化收益率: {metrics.get('annual_return', 0):.2%}")
             print(f"   最大回撤: {metrics.get('max_drawdown', 0):.2%}")
@@ -232,10 +261,10 @@ def run_sample_test():
             print(f"   - backtest_report.png: 可视化报告")
             
         else:
-            print("❌ 回测失败")
+            print("回测失败")
             
     except Exception as e:
-        print(f"❌ 测试过程中发生错误: {e}")
+        print(f"测试过程中发生错误: {e}")
         import traceback
         traceback.print_exc()
     
@@ -250,35 +279,35 @@ def validate_system_components():
     
     try:
         # 测试配置加载
-        from utils.config import BacktestConfig
+        from lob_backtest.utils.config import BacktestConfig
         config = BacktestConfig()
-        print("✅ 配置模块正常")
+        print("配置模块正常")
         
         # 测试数据加载器
-        from data.lob_data_loader import LOBDataLoader
-        from data.signal_data_loader import SignalDataLoader
+        from lob_backtest.data.lob_data_loader import LOBDataLoader
+        from lob_backtest.data.signal_data_loader import SignalDataLoader
         lob_loader = LOBDataLoader()
         signal_loader = SignalDataLoader()
-        print("✅ 数据加载模块正常")
+        print("数据加载模块正常")
         
         # 测试撮合引擎
-        from engine.matching_engine import MatchingEngine
-        from engine.order_book import OrderBook
+        from lob_backtest.engine.matching_engine import MatchingEngine
+        from lob_backtest.engine.order_book import OrderBook
         engine = MatchingEngine()
         order_book = OrderBook()
-        print("✅ 撮合引擎模块正常")
+        print("撮合引擎模块正常")
         
         # 测试分析模块
-        from analysis.performance_metrics import PerformanceAnalyzer
-        from analysis.visualization import BacktestVisualizer
+        from lob_backtest.analysis.performance_metrics import PerformanceAnalyzer
+        from lob_backtest.analysis.visualization import BacktestVisualizer
         analyzer = PerformanceAnalyzer()
         visualizer = BacktestVisualizer()
-        print("✅ 分析模块正常")
+        print("分析模块正常")
         
-        print("✅ 所有系统组件验证通过")
+        print("所有系统组件验证通过")
         
     except Exception as e:
-        print(f"❌ 组件验证失败: {e}")
+        print(f"组件验证失败: {e}")
         import traceback
         traceback.print_exc()
 

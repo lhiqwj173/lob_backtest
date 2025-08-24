@@ -7,7 +7,6 @@
 import os
 import pandas as pd
 import numpy as np
-import pytz
 from typing import Optional, List, Tuple
 from pathlib import Path
 
@@ -15,84 +14,100 @@ from pathlib import Path
 class LOBDataLoader:
     """十档盘口数据加载器"""
     
-    def __init__(self, timezone: str = "Asia/Shanghai"):
+    def load_data(self, data_path: str, stock_id: str, start_timestamp: int, end_timestamp: int) -> Optional[pd.DataFrame]:
         """
-        初始化数据加载器
-        
+        从指定目录加载多日十档盘口数据
+
         Args:
-            timezone: 时区设置，强制使用北京时间
-        """
-        self.timezone = pytz.timezone(timezone)
-    
-    def load_data(self, file_path: str, 
-                  begin_time: str = "09:30", 
-                  end_time: str = "15:00") -> Optional[pd.DataFrame]:
-        """
-        加载十档盘口数据
-        
-        Args:
-            file_path: CSV文件路径
-            begin_time: 开始时间 (HH:MM格式)
-            end_time: 结束时间 (HH:MM格式)
-            
+            data_path: 数据根目录 (e.g., "D:/L2_DATA_T0_ETF/his_data")
+            stock_id: 标的代码 (e.g., "513180")
+            start_timestamp: 开始时间戳
+            end_timestamp: 结束时间戳
+
         Returns:
-            清理后的DataFrame，如果数据无效则返回None
+            合并并清理后的DataFrame，如果无有效数据则返回None
         """
-        if not os.path.exists(file_path):
-            print(f"数据文件不存在: {file_path}")
+        data_root = Path(data_path)
+        if not data_root.is_dir():
+            print(f"数据根目录不存在: {data_root}")
             return None
+
+        all_data = []
+        start_date = pd.to_datetime(start_timestamp, unit='s').date()
+        end_date = pd.to_datetime(end_timestamp, unit='s').date()
+
+        for date_dir in sorted(data_root.iterdir()):
+            if not date_dir.is_dir():
+                continue
+            
+            try:
+                dir_date = pd.to_datetime(date_dir.name, format='%Y%m%d').date()
+                if not (start_date <= dir_date <= end_date):
+                    continue
+            except ValueError:
+                continue
+
+            file_path = date_dir / stock_id / "十档盘口.csv"
+            if not file_path.exists():
+                continue
+
+            print(f"正在加载数据: {file_path}")
+            daily_data = self._load_single_day_data(str(file_path))
+            if daily_data is not None:
+                all_data.append(daily_data)
+
+        if not all_data:
+            print("在指定时间范围内未找到有效数据")
+            return None
+
+        # 合并所有数据
+        full_data = pd.concat(all_data, ignore_index=True)
+        full_data = full_data.sort_values('时间').reset_index(drop=True)
+
+        # 转换为时间戳并进行最终过滤
+        # 移除毫秒，确保时间戳与信号数据对齐
+        full_data['时间'] = full_data['时间'].dt.floor('S')
+        full_data['timestamp'] = full_data['时间'].apply(lambda x: int(x.timestamp()))
         
+        full_data = full_data[
+            (full_data['timestamp'] >= start_timestamp) &
+            (full_data['timestamp'] <= end_timestamp)
+        ]
+
+        return full_data.reset_index(drop=True)
+
+    def _load_single_day_data(self, file_path: str) -> Optional[pd.DataFrame]:
+        """加载单日数据并进行初步处理"""
         try:
-            # {{ AURA-X | Action: Modify | Reason: 增强编码兼容性，自动尝试多种编码格式 | Approval: Cunzhi(ID:1735632000) }}
-            # 尝试多种编码格式读取CSV数据
             encodings = ['gbk', 'utf-8', 'utf-8-sig', 'gb2312']
             data = None
-
             for encoding in encodings:
                 try:
                     data = pd.read_csv(file_path, encoding=encoding)
-                    print(f"成功使用 {encoding} 编码读取数据")
                     break
                 except UnicodeDecodeError:
                     continue
-
+            
             if data is None:
-                raise ValueError(f"无法使用任何支持的编码格式读取文件: {file_path}")
-            
-            # 删除完全重复的行
+                raise ValueError("无法使用任何支持的编码格式读取文件")
+
             data = data.drop_duplicates(keep='first')
-            
-            # 格式化时间列，强制使用北京时间
-            data['时间'] = pd.to_datetime(data['时间'])
-            data['时间'] = data['时间'].dt.tz_localize(self.timezone, ambiguous='infer')
-            
-            # 时间过滤：交易时间段
-            data = self._filter_trading_hours(data, begin_time, end_time)
-            
-            if len(data) == 0:
-                print(f"时间过滤后无数据: {file_path}")
+            # 将时间字符串转换为无时区的datetime对象。
+            # 后续调用 .timestamp() 时，Pandas/Python会隐式使用本地系统时区（北京时间）
+            # 来计算Unix时间戳，这符合项目要求。
+            data['时间'] = pd.to_datetime(data['时间'], errors='coerce')
+            data = self._filter_trading_hours(data, "09:30", "15:00")
+
+            if len(data) == 0 or self._check_limit_up_down(data):
                 return None
-            
-            # 涨跌停检查
-            if self._check_limit_up_down(data):
-                print(f"存在涨跌停，跳过: {file_path}")
-                return None
-            
-            # 数据质量检查
+
             self._validate_data_quality(data)
-            
-            # 数据清理
             data = self._clean_data(data)
             
-            # 添加时间戳列（UTC秒级）
-            data['timestamp'] = data['时间'].apply(
-                lambda x: int(x.timestamp())
-            )
-            
-            return data.reset_index(drop=True)
-            
+            return data
+
         except Exception as e:
-            print(f"加载数据失败 {file_path}: {e}")
+            print(f"加载单日数据失败 {file_path}: {e}")
             return None
     
     def _filter_trading_hours(self, data: pd.DataFrame, 

@@ -3,13 +3,12 @@
 
 # 数据源配置
 data:
-  lob_data_path: ""  # 十档盘口数据路径
-  signal_data_path: ""  # 深度学习信号数据路径
-  timezone: "Asia/Shanghai"  # 强制使用北京时间
+  lob_data_path: "D:/L2_DATA_T0_ETF/his_data"  # 十档盘口数据根目录
+  signal_data_path: "C:\Users\lh\Desktop\temp\backtest\test\513180_1725845725_1727161015.csv"  # 深度学习信号数据路径
 
 # 信号配置
 signal:
-  source: "predict"  # target/predict - 信号源选择
+  source: "target"  # target/predict - 信号源选择
   predict_threshold: "max"  # max/数值 - 预测触发阈值策略
   
 # {{ AURA-X | Action: Modify | Reason: 修复数值类型，确保YAML正确解析数值 | Approval: Cunzhi(ID:1735632000) }}
@@ -19,7 +18,13 @@ trading:
   commission_rate: 0.00005  # 手续费率（万分之五）
   all_in_mode: true  # 全仓模式
   initial_capital: 1000000  # 初始资金
-  
+  rest_force_close: true    # 中午收盘前10s强制平仓
+  close_force_close: true   # 下午收盘前10s强制平仓
+
+# 回测配置
+backtest:
+  debug: true # debug模式开关
+
 # 撮合引擎配置
 matching:
   order_type: "market"  # 市价单
@@ -36,3 +41,4 @@ visualization:
   enable: true
   save_plots: true
   plot_format: "png"
+  interactive: true  # 是否启用交互式可视化

@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import  tqdm
-import pytz, time
+import time
 import datetime
 
 # %%
@@ -50,13 +50,13 @@ files
 
 # %%
 file = [i for i in files if code in i][0]
-print(file)
+# print(file)
 
 symbol, begin, end = file.split('/')[-1][:-4].split('_')
-print(symbol, begin, end)
+# print(symbol, begin, end)
 
 predict_data = pd.read_csv(file)
-print(predict_data.dtypes)
+# print(predict_data.dtypes)
 
 predict_data
 
@@ -72,20 +72,20 @@ if 'predict' not in list(predict_data):
         else:
             if predict_mode == 'threshold_012':
                 # 读取阈值
-                print('使用阈值文件')
+                # print('使用阈值文件')
                 threshold_file = file.replace(file.split('/')[-1], 'threshold.txt')
                 if not os.path.exists(threshold_file):
                     raise FileNotFoundError('阈值文件不存在')
                 threshold = [float(i) for i in open(threshold_file, 'r').readline().strip().split(',')]
             else:
-                print('使用阈值字符串')
+                # print('使用阈值字符串')
                 threshold_list = predict_mode.split(',')
                 while len(threshold_list)!= y_len:
                     threshold_list.append(threshold_list[0])
                 threshold = [float(i) for i in threshold_list]
 
             threshold = threshold[:y_len]
-            print(threshold)
+            # print(threshold)
             predict_bool = predict_data.iloc[:, idx_0:] >= threshold
 
             # 定义函数根据条件设置 predict 列的值
@@ -116,15 +116,15 @@ predict_data['predict'].value_counts()
 predict_data['predict'].value_counts()
 
 # %%
-predict_data['time'] = pd.to_datetime(predict_data['timestamp'] + 8*3600, unit='s')
+predict_data['time'] = pd.to_datetime(predict_data['timestamp'], unit='s')
 predict_data = predict_data.set_index('time').sort_index()
 # predict_data = predict_data.set_index('time')
 
 begin_date = predict_data.index.min().date()
 end_date = predict_data.index.max().date()
 predict_dates = set([str(i)[:10] for i in predict_data.index.to_list()])
-print(begin_date, end_date)
-print(predict_dates)
+# print(begin_date, end_date)
+# print(predict_dates)
 
 predict_data
 
@@ -178,7 +178,7 @@ for i in raws:
         _df = pd.read_csv(i, encoding='gbk')
         _df['时间'] = pd.to_datetime(_df['时间'])
         _df = _df.loc[((_df['时间'].dt.time >= datetime.time(9, 30)) & (_df['时间'].dt.time <= datetime.time(11, 30))) | ((_df['时间'].dt.time >= datetime.time(13)) & (_df['时间'].dt.time < datetime.time(14,57))), :].reset_index(drop=True)
-        _df['timestamp'] = _df['时间'].apply(lambda x:int((x.timestamp() - 8*3600)))
+        _df['timestamp'] = _df['时间'].apply(lambda x:int(x.timestamp()))
         _df = _df.loc[:, ['timestamp', '卖1价', '买1价']]
 
     raws_data = pd.concat([raws_data, _df], ignore_index=True)
@@ -186,14 +186,14 @@ raws_data['mid'] = (raws_data['卖1价'] + raws_data['买1价']) / 2
 
 if not is_t0:
     raws_data = raws_data.sort_values('save_timestamp').reset_index(drop=True)
-    raws_data['timestamp'] = raws_data['save_timestamp'].apply(lambda x:int((x.timestamp() - 8*3600)*1000))
+    raws_data['timestamp'] = raws_data['save_timestamp'].apply(lambda x:int(x.timestamp()*1000))
 
 raws_data# 1714212010531 - 1714341599778
 
 # %%
 # 过滤不需要的数据
 timestamp_min,timestamp_max = predict_data['timestamp'].min(), predict_data['timestamp'].max()
-print(f'预测数据时间戳范围: {timestamp_min} - {timestamp_max}')
+# print(f'预测数据时间戳范围: {timestamp_min} - {timestamp_max}')
 
 raws_data = raws_data.loc[((raws_data['timestamp'] >= timestamp_min) & (raws_data['timestamp'] <= timestamp_max)), :].reset_index(drop=True)
 
@@ -201,7 +201,7 @@ if not is_t0:
     raws_data = raws_data.rename(columns={'save_timestamp': "datetime"})
 else:
     # 时间戳转时间格式
-    raws_data['datetime'] = pd.to_datetime(raws_data['timestamp'] + 8*3600, unit='s')
+    raws_data['datetime'] = pd.to_datetime(raws_data['timestamp'], unit='s')
 raws_data
 
 # %% [markdown]
@@ -216,8 +216,8 @@ for i in os.listdir(_train_result_folder):
     elif i.startswith(asset_nets_file):
         asset_nets_file = os.path.join(_train_result_folder, i)
 
-print(trades_file)
-print(asset_nets_file)
+# print(trades_file)
+# print(asset_nets_file)
 
 need_plot_sub = trades_file.endswith('.csv') and asset_nets_file.endswith('.csv')
 # assert trades_file.endswith('.csv'), f'未找到交易文件'
@@ -264,9 +264,8 @@ if need_plot_sub:
 # 生成时间序列
 start_time = '1990-01-01 00:00:00'
 # 设置北京时间时区
-tz = pytz.timezone('Asia/Shanghai')
 if not is_t0:
-    raws_data['time'] = pd.date_range(start=start_time, periods=len(raws_data), freq='S',  tz=tz)
+    raws_data['time'] = pd.date_range(start=start_time, periods=len(raws_data), freq='S')
 else:
     raws_data['time'] = raws_data['datetime']
 
@@ -345,7 +344,7 @@ def on_button_press(chart):
             # print(f'{idx} BREAK')
             break
 
-        print(f'{t} {T} {P}', end=' ')
+        # print(f'{t} {T} {P}', end=' ')
         if test_label:
             if (T==0):
                 marks.append({'time': t, 'position': 'below', 'shape': 'arrow_up', 'color':'#CB4335', "text":''})
@@ -363,11 +362,11 @@ def on_button_press(chart):
                     win = 1
                     marks.append({'time': t, 'position': 'below', 'shape': 'arrow_up', 'color':'#CB4335', "text":''})
                     # chart.marker(t, 'below', 'arrow_up', color='#CB4335')
-                    print('win')
+                    # print('win')
                 else:
                     marks.append({'time': t, 'position': 'below', 'shape': 'circle', 'color':'#641E16', "text":''})
                     # chart.marker(t, 'below', 'circle', color='#641E16')
-                    print('loss')
+                    # print('loss')
 
             elif T==1:
                 # marks.append({'time': t, 'position': 'above', 'shape': 'circle', 'color':'#145A32', "text":''})
@@ -376,11 +375,11 @@ def on_button_press(chart):
                     win = 1
                     marks.append({'time': t, 'position': 'above', 'shape': 'arrow_down', 'color':'#27AE60', "text":''})
                     # chart.marker(t, 'above', 'arrow_down', color='#27AE60')
-                    print('win')
+                    # print('win')
                 else:
                     marks.append({'time': t, 'position': 'above', 'shape': 'circle', 'color':'#145A32', "text":''})
                     # chart.marker(t, 'above', 'circle', color='#145A32')
-                    print('loss')
+                    # print('loss')
 
             if win==0:
                 if P==0:
@@ -388,9 +387,9 @@ def on_button_press(chart):
                 elif P==1:
                     marks.append({'time': t, 'position': 'above', 'shape': '', 'color':'#145A32', "text":'X'})
     
-    print(f'cost time {(time.time()-t0):.3f}')
+    # print(f'cost time {(time.time()-t0):.3f}')
     chart.marker_list(marks)
-    print(f'更新标签 {begin_idx} - {end_idx} {len(marks)} {idx}')
+    # print(f'更新标签 {begin_idx} - {end_idx} {len(marks)} {idx}')
 
 chart2 = None
 chart2s = {}
@@ -477,7 +476,7 @@ chart.events.range_change += on_range_change
 # data = raws_data.iloc[:2000]
 # data = raws_data.resample('S').first()
 # raw_length = len(data)
-# print(f'数据: {raw_length}条')
+# # print(f'数据: {raw_length}条')
 # if raw_length > 160000:
 #     data = data.iloc[:160000]
 data = raws_data.iloc[data_begin:data_end]

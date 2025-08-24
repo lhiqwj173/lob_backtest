@@ -7,20 +7,10 @@
 import pandas as pd
 import numpy as np
 from typing import Optional, Union, List
-import pytz
 
 
 class SignalDataLoader:
     """深度学习信号数据加载器"""
-    
-    def __init__(self, timezone: str = "Asia/Shanghai"):
-        """
-        初始化信号数据加载器
-        
-        Args:
-            timezone: 时区设置，强制使用北京时间
-        """
-        self.timezone = pytz.timezone(timezone)
     
     def load_signal_data(self, file_path: str) -> Optional[pd.DataFrame]:
         """
@@ -42,13 +32,15 @@ class SignalDataLoader:
                 raise ValueError(f"缺少必要列: {missing_cols}")
             
             # 添加时间列（北京时间）
-            data['datetime'] = pd.to_datetime(data['timestamp'] + 8*3600, unit='s')
-            data['datetime'] = data['datetime'].dt.tz_localize('UTC').dt.tz_convert(self.timezone)
+            # 将Unix时间戳转换为无时区的datetime对象（本地时间）
+            data['datetime'] = pd.to_datetime(data['timestamp'], unit='s')
             
             return data.sort_values('timestamp').reset_index(drop=True)
             
         except Exception as e:
-            print(f"加载信号数据失败 {file_path}: {e}")
+            import traceback
+            print(f"加载信号数据失败 {file_path}")
+            print(f"异常堆栈信息:\n{traceback.format_exc()}")
             return None
     
     def generate_signals(self, data: pd.DataFrame, 
@@ -153,33 +145,3 @@ class SignalDataLoader:
         result = pd.DataFrame(aligned_signals).reset_index(drop=True)
         return result
     
-    def get_signal_at_timestamp(self, data: pd.DataFrame, timestamp: int) -> Optional[dict]:
-        """
-        获取指定时间戳的信号
-        
-        Args:
-            data: 信号数据
-            timestamp: 时间戳
-            
-        Returns:
-            信号字典，包含动作和概率信息
-        """
-        # 找到最接近的时间戳
-        time_diffs = np.abs(data['timestamp'] - timestamp)
-        closest_idx = time_diffs.idxmin()
-        
-        # 如果时间差超过60秒，认为无有效信号
-        if time_diffs.iloc[closest_idx] > 60:
-            return None
-        
-        row = data.iloc[closest_idx]
-        
-        return {
-            'timestamp': row['timestamp'],
-            'signal': row.get('signal', np.nan),
-            'target': row['target'],
-            'has_pos': row['has_pos'],
-            'prob_hold': row['0'],  # 持仓概率
-            'prob_close': row['1'],  # 空仓概率
-            'confidence': max(row['0'], row['1'])  # 置信度
-        }

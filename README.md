@@ -1,5 +1,10 @@
 # LOB回测系统 (Limit Order Book Backtesting System)
 
+[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/Cunzhi/LOB-backtest)
+[![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 ## 项目简介
 
 这是一个专业的订单簿级别撮合回测系统，专门用于对交易信号进行高精度的回测分析。系统支持十档盘口数据处理、深度学习信号集成、实时撮合模拟和全面的性能分析。
@@ -20,14 +25,15 @@
 ### 📊 性能分析与可视化
 - **业界标准指标**: 夏普比率、最大回撤、胜率、盈亏比等
 - **基准对比**: 与买入并持有策略对比
-- **交互式图表**: 净值曲线、回撤图、交易分析
+- **静态图表**: 净值曲线、回撤图、交易分析（matplotlib）
+- **交互式图表**: 基于lightweight-charts的交互式可视化（支持标记、缩放、时间范围切换）
 - **详细报告**: 自动生成PDF格式的回测报告
 
 ## 项目结构
 
 ```
 lob_backtest/
-├── src/                          # 源代码目录
+├── lob_backtest/                 # 源代码目录
 │   ├── data/                     # 数据处理模块
 │   │   ├── lob_data_loader.py    # 十档盘口数据加载器
 │   │   └── signal_data_loader.py # 信号数据加载器
@@ -148,9 +154,16 @@ trading:
 
 # 撮合引擎配置
 matching:
-  order_type: "market"          # 市价单
-  slippage_model: "market_impact" # 滑点模型
-  use_all_levels: true          # 使用全部档位
+  order_type: "market"          # 订单类型 (目前仅支持市价单)
+  slippage_model: "market_impact" # 滑点模型 (基于订单簿深度的市场冲击模型)
+  use_all_levels: true          # 是否使用全部档位进行撮合
+
+# 可视化配置
+visualization:
+  enable: true                  # 启用静态可视化
+  save_plots: true              # 保存静态图表
+  plot_format: "png"            # 图表格式
+  interactive: false             # 启用交互式可视化（需要手动启动）
 ```
 
 ## 输出文件
@@ -211,6 +224,29 @@ config.save()
 backtester = LOBBacktester()
 ```
 
+### 启用交互式可视化
+```python
+from utils.config import BacktestConfig
+
+# 启用交互式可视化
+config = BacktestConfig()
+config.set('visualization.interactive', True)  # 启用交互式可视化
+config.save()
+
+# 运行回测（将自动启动交互式可视化）
+backtester = LOBBacktester()
+results = backtester.run_backtest(
+    lob_data_path="data/lob.csv",
+    signal_data_path="data/signals.csv",
+    symbol="ETF_513330"
+)
+
+# 或者直接在配置文件中设置
+# 在 config/backtest_config.yaml 中设置:
+# visualization:
+#   interactive: true
+```
+
 ## 性能基准
 
 在标准测试环境下（Intel i7, 16GB RAM）：
@@ -227,21 +263,21 @@ backtester = LOBBacktester()
 
 ## 扩展开发
 
+我们欢迎社区贡献者对本项目进行扩展。以下是一些可以入手的方向：
+
 ### 添加新的信号策略
-```python
-# 在 signal_data_loader.py 中扩展
-def custom_threshold_strategy(self, data, custom_params):
-    # 实现自定义阈值逻辑
-    pass
-```
+在 [`signal_data_loader.py`](lob_backtest/data/signal_data_loader.py:12) 中，您可以实现自己的信号处理逻辑。例如，您可以添加一个基于波动率的动态阈值策略。
 
 ### 添加新的性能指标
-```python
-# 在 performance_metrics.py 中扩展
-def calculate_custom_metric(self, returns):
-    # 实现自定义指标计算
-    pass
-```
+在 [`performance_metrics.py`](lob_backtest/analysis/performance_metrics.py:16) 中，您可以添加自定义的性能指标，如索提诺比率（Sortino Ratio）或信息比率（Information Ratio）。
+
+### 贡献代码
+如果您希望贡献代码，请遵循以下步骤：
+1. Fork 本项目
+2. 创建您的特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交您的修改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 打开一个 Pull Request
 
 ## 技术支持
 
@@ -251,13 +287,18 @@ def calculate_custom_metric(self, returns):
 3. 依赖包是否完整安装
 4. 系统资源是否充足
 
+如果问题仍然存在，欢迎在 [Issues](https://github.com/Cunzhi/LOB-backtest/issues) 中提出。
+
 ## 版本历史
 
 - v1.0.0: 初始版本，支持基础回测功能
 - 核心功能: LOB数据处理、信号集成、撮合引擎、性能分析
 
+## 许可证
+
+本项目使用 MIT 许可证。详情请见 [LICENSE](LICENSE) 文件。
+
 ---
 
 **开发团队**: 深度学习金融量化工程师  
 **技术栈**: Python, Numba, Pandas, NumPy, Matplotlib  
-**许可证**: MIT License
