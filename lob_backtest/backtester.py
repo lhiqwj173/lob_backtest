@@ -8,7 +8,7 @@ import os
 import sys
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, time
 from pathlib import Path
 from .utils.config import BacktestConfig
 from .data.lob_data_loader import LOBDataLoader
@@ -213,7 +213,7 @@ class LOBBacktester:
                                 tolerance=pd.Timedelta('3s')
                             )
                     
-                    # 填充缺失值
+                    # 填充缺失值 
                     asset_history_df.ffill(inplace=True)
                     asset_history_df.bfill(inplace=True)
 
@@ -356,25 +356,21 @@ class LOBBacktester:
             # 强制平仓逻辑
             current_time = datetime.fromtimestamp(timestamp)
 
-            # 每日中午收盘前10秒
-            if rest_force_close and (current_time.hour == 11 and current_time.minute == 29 and current_time.second >= 50):
-                self.engine.force_close_position(timestamp)
+            # --- 强制平仓及交易时段控制逻辑 ---
+            is_prohibited = self._is_trading_prohibited(current_time, rest_force_close, close_force_close)
+            has_position = self.engine.position.volume > 0
 
-            # 每日下午收盘前10秒
-            elif close_force_close and (current_time.hour == 14 and current_time.minute == 59 and current_time.second >= 50):
-                self.engine.force_close_position(timestamp)
-
-            # 正常处理交易信号
-            else:
-                has_position = self.engine.position.volume > 0
-                
+            if is_prohibited:
                 if has_position:
-                    # 有持仓，使用 pos=1 的信号
-                    signal_info = signal_info_pos1
-                else:
-                    # 无持仓，使用 pos=0 的信号
-                    signal_info = signal_info_pos0
+                    self.engine.force_close_position(timestamp)
                 
+                # 在禁止时段，只处理平仓信号
+                signal_info = signal_info_pos1
+                if has_position and not pd.isna(signal_info.get('signal')) and int(signal_info['signal']) == 1:
+                    self.engine.submit_signal(1, signal_info, timestamp)
+            else:
+                # --- 正常处理所有交易信号 ---
+                signal_info = signal_info_pos1 if has_position else signal_info_pos0
                 if not pd.isna(signal_info.get('signal')):
                     signal = int(signal_info['signal'])
                     self.engine.submit_signal(signal, signal_info, timestamp)
@@ -470,3 +466,20 @@ class LOBBacktester:
         print(f"总交易次数: {metrics.get('total_trades', 0)}")
         print(f"胜率: {metrics.get('win_rate', 0):.2%}")
         print(f"盈亏比: {metrics.get('profit_factor', 0):.2f}")
+
+    def _is_trading_prohibited(self, current_time: datetime, rest_force_close: bool, close_force_close: bool) -> bool:
+        """判断当前时间是否处于禁止开仓的时段"""
+        current_t = current_time.time()
+
+        # 中午休盘时段: 11:29:50 - 12:00:00
+        is_lunch_break = time(11, 29, 50) <= current_t <= time(12, 0, 0)
+        
+        # 下午临近收盘及收盘后时段: 14:59:50 - 15:10:00
+        is_near_close = time(14, 59, 50) <= current_t <= time(15, 10, 0)
+
+        if rest_force_close and is_lunch_break:
+            return True
+        if close_force_close and is_near_close:
+            return True
+            
+        return False

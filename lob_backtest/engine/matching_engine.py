@@ -160,16 +160,10 @@ class MatchingEngine:
             'volume': estimated_volume,
             'timestamp': timestamp,
             'order_time': current_time,
-            'execute_time': timestamp + self.delay_ticks
+            'ticks_since_submit': 0
         }
 
-        if self.delay_ticks > 0:
-            # 延迟执行
-            self.pending_orders.append(order)
-        else:
-            # 立即执行
-            self._execute_buy_order(order)
-
+        self.pending_orders.append(order)
         return True
 
     def _submit_sell_order(self, timestamp: int, current_time: datetime) -> bool:
@@ -183,38 +177,40 @@ class MatchingEngine:
             'volume': self.position.volume,
             'timestamp': timestamp,
             'order_time': current_time,
-            'execute_time': timestamp + self.delay_ticks
+            'ticks_since_submit': 0
         }
 
-        if self.delay_ticks > 0:
-            # 延迟执行
-            self.pending_orders.append(order)
-        else:
-            # 立即执行
-            self._execute_sell_order(order)
-
+        self.pending_orders.append(order)
         return True
 
     def _process_pending_orders(self, current_timestamp: int) -> None:
         """处理延迟订单队列"""
-        remaining_orders = []
-        executed_something = False
+        # {{ AURA-X | Action: Modify | Reason: 使用基于tick的延迟机制，更精确地模拟延迟 | Approval: Cunzhi(ID:1735632000) }}
+        if not self.pending_orders:
+            return
 
+        executable_orders = []
+        remaining_orders = []
+
+        # 增加所有待处理订单的tick计数器
         for order in self.pending_orders:
-            if current_timestamp >= order['execute_time']:
-                if order['type'] == 'buy':
-                    self._execute_buy_order(order)
-                elif order['type'] == 'sell':
-                    self._execute_sell_order(order)
-                executed_something = True
+            order['ticks_since_submit'] = order.get('ticks_since_submit', 0) + 1
+            # delay_ticks=0 也默认存在一个tick 的延迟
+            if order['ticks_since_submit'] > self.delay_ticks:
+                executable_orders.append(order)
             else:
                 remaining_orders.append(order)
         
-        # 如果有订单被执行，则更新订单列表
-        if executed_something:
-            self.pending_orders = remaining_orders
+        self.pending_orders = remaining_orders
 
-    def _execute_buy_order(self, order: Dict) -> None:
+        # 执行达到延迟条件的订单
+        for order in executable_orders:
+            if order['type'] == 'buy':
+                self._execute_buy_order(order, current_timestamp)
+            elif order['type'] == 'sell':
+                self._execute_sell_order(order, current_timestamp)
+
+    def _execute_buy_order(self, order: Dict, execution_timestamp: int) -> None:
         """执行买入订单"""
         # 重新计算可买入数量（考虑资金变化）
         available_capital = self.current_capital
@@ -255,7 +251,7 @@ class MatchingEngine:
         self.total_commission += commission
 
         # 创建交易记录
-        deal_time = datetime.fromtimestamp(order['execute_time'])
+        deal_time = datetime.fromtimestamp(execution_timestamp)
 
         self.current_trade = Trade(
             symbol="",  # 将在外部设置
@@ -270,7 +266,7 @@ class MatchingEngine:
 
         self.total_trades += 1
 
-    def _execute_sell_order(self, order: Dict) -> None:
+    def _execute_sell_order(self, order: Dict, execution_timestamp: int) -> None:
         """执行卖出订单"""
         if self.position.volume <= 0 or not self.current_trade:
             return
@@ -300,7 +296,7 @@ class MatchingEngine:
         self.total_commission += commission
 
         # 完成交易记录
-        deal_time = datetime.fromtimestamp(order['execute_time'])
+        deal_time = datetime.fromtimestamp(execution_timestamp)
 
         self.current_trade.close_order_timestamp = order['order_time']
         self.current_trade.close_deal_timestamp = deal_time
@@ -381,10 +377,9 @@ class MatchingEngine:
                 'volume': self.position.volume,
                 'timestamp': timestamp,
                 'order_time': current_time,
-                'execute_time': timestamp
             }
 
-            self._execute_sell_order(order)
+            self._execute_sell_order(order, timestamp)
 
     def get_performance_summary(self) -> Dict:
         """获取性能摘要"""

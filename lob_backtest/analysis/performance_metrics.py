@@ -52,7 +52,7 @@ class PerformanceAnalyzer:
         df['benchmark_return'] = df['benchmark'].pct_change()
         
         # 计算累计收益率
-        df['strategy_cumret'] = (df['asset'] / initial_capital) - 1
+        df['strategy_cumret'] = (df['asset'] / df['asset'].iloc[0]) - 1
         df['benchmark_cumret'] = (df['benchmark'] / df['benchmark'].iloc[0]) - 1
         
         # 基础指标

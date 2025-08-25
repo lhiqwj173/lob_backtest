@@ -74,6 +74,9 @@ class InteractiveChart:
             if col not in self.data.columns:
                 raise ValueError(f"错误: 数据中缺少必需的列 '{col}'。")
 
+        # 精度控制
+        self.data['drawdown'] = self.data['drawdown'].round(4)
+
         if '买1价' in self.data.columns and '卖1价' in self.data.columns:
             self.data['mid'] = (self.data['买1价'] + self.data['卖1价']) / 2
         else:
@@ -121,16 +124,33 @@ class InteractiveChart:
             return
             
         target_date = self.unique_dates[self.current_date_index]
-        self.chart_data = self.data[self.data.index.normalize() == target_date]
+        # 使用 .copy() 避免 SettingWithCopyWarning
+        daily_data = self.data[self.data.index.normalize() == target_date].copy()
         
         self.chart.clear_markers()
 
-        if not self.chart_data.empty:
+        if not daily_data.empty:
+            # --- 指标校正 ---
+            # 1. 校正净值：将当天的第一个值修正到1
+            first_asset = daily_data['asset'].iloc[0]
+            if first_asset != 0:
+                daily_data['asset'] = daily_data['asset'] / first_asset
+            
+            first_benchmark = daily_data['benchmark'].iloc[0]
+            if first_benchmark != 0:
+                daily_data['benchmark'] = daily_data['benchmark'] / first_benchmark
+
+            # 2. 校正回撤：专注在当前日期
+            running_max = daily_data['asset'].expanding().max()
+            daily_data['drawdown'] = ((daily_data['asset'] - running_max) / running_max).round(4)
+            # --- 校正结束 ---
+
+            self.chart_data = daily_data
             df_for_chart = self.chart_data.reset_index().rename(columns={'index': 'time'})
             
             if 'hl1' not in df_for_chart.columns:
                 df_for_chart['hl1'] = 1
-
+            
             self.chart.set(df_for_chart.loc[:, ['time', 'open', 'high', 'low', 'close']])
             
             self.asset_line.set(df_for_chart.loc[:, ["time", 'asset']])
@@ -144,6 +164,14 @@ class InteractiveChart:
             self.chart.set_visible_range(start_time, end_time)
         else:
             print(f"日期 {target_date.date()} 没有数据。")
+            self.chart_data = pd.DataFrame() # 清空数据
+            # 通过设置空数据来清除所有系列
+            self.chart.set(pd.DataFrame(columns=['time', 'open', 'high', 'low', 'close']))
+            self.asset_line.set(pd.DataFrame(columns=['time', 'asset']))
+            self.benchmark_line.set(pd.DataFrame(columns=['time', 'benchmark']))
+            self.drawdown_hist.set(pd.DataFrame(columns=['time', 'drawdown']))
+            self.pos_hist.set(pd.DataFrame(columns=['time', 'pos']))
+            self.hl1_line.set(pd.DataFrame(columns=['time', 'hl1']))
 
     def _on_left_right(self, chart, left=True):
         if left:
@@ -164,29 +192,49 @@ class InteractiveChart:
     def _on_left(self, chart): self._on_left_right(chart, left=True)
     def _on_right(self, chart): self._on_left_right(chart, left=False)
 
-    def show(self):
-        self._prepare_data()
+    def show(self, initial_render=True):
+        if initial_render:
+            self._prepare_data()
         
         if not self.unique_dates:
             print("错误: 数据为空或不包含有效日期，无法显示图表。")
             return
             
         initial_date = self.unique_dates[self.current_date_index]
-        self.chart_data = self.data[self.data.index.normalize() == initial_date]
+        self.chart_data = self.data[self.data.index.normalize() == initial_date].copy()
+        
+        # --- 指标校正 ---
+        if not self.chart_data.empty:
+            # 1. 校正净值：将当天的第一个值修正到1
+            first_asset = self.chart_data['asset'].iloc[0]
+            if first_asset != 0:
+                self.chart_data['asset'] = self.chart_data['asset'] / first_asset
+            
+            first_benchmark = self.chart_data['benchmark'].iloc[0]
+            if first_benchmark != 0:
+                self.chart_data['benchmark'] = self.chart_data['benchmark'] / first_benchmark
+
+            # 2. 校正回撤：专注在当前日期
+            running_max = self.chart_data['asset'].expanding().max()
+            self.chart_data['drawdown'] = ((self.chart_data['asset'] - running_max) / running_max).round(4)
+        # --- 校正结束 ---
 
         self.chart = Chart(toolbox=True, inner_width=1, inner_height=0.7, title=self.symbol.upper())
+        self.chart.precision(4)
         self.chart.time_scale(seconds_visible=True)
         self.chart.topbar.button('bt', '标记', func=self._on_button_press)
         self.chart.topbar.button('left', '前一天', func=self._on_left)
         self.chart.topbar.button('right', '后一天', func=self._on_right)
-        self.chart.legend(True)
-        self.chart.price_scale(mode='logarithmic')
+        self.chart.legend(True, percent=False)
+        self.chart.price_scale(mode='normal')
         self.chart.events.range_change += self._on_range_change
 
         df_for_chart = self.chart_data.reset_index().rename(columns={'index': 'time'})
 
         if not df_for_chart.empty:
-            self.chart.set(df_for_chart.loc[:, ['time', 'open', 'high', 'low', 'close']])
+            candles = self.chart.set(df_for_chart.loc[:, ['time', 'open', 'high', 'low', 'close']])
+            if candles:
+                candles.precision(4)
             
             candle_color = '#626262'
             self.chart.candle_style(up_color=candle_color, down_color=candle_color, border_up_color=candle_color, border_down_color=candle_color, wick_up_color=candle_color, wick_down_color=candle_color)
@@ -198,32 +246,34 @@ class InteractiveChart:
             print(f"初始日期 {initial_date.date()} 数据为空。")
 
         self.subchart = self.chart.create_subchart(position='below', width=1, height=0.3, sync=True)
+        self.subchart.precision(4)
         self.subchart.time_scale(seconds_visible=True)
         self.subchart.legend(True)
-        self.subchart.precision(4)
+        
+        # 无论初始数据是否为空，都创建系列对象
+        self.drawdown_hist = self.subchart.create_histogram('drawdown', price_line=False, scale_margin_top=0, scale_margin_bottom=0.5, color='rgba(98, 98, 98, 0.7)')
+        self.drawdown_hist.precision(4)
+        self.pos_hist = self.subchart.create_histogram('pos', price_line=False, scale_margin_top=0.6, scale_margin_bottom=0, color='rgba(135, 206, 250, 0.3)')
+        self.hl1_line = self.subchart.create_line('hl1', price_line=False, color='white', style='dashed')
+        self.hl1_line.precision(4)
+        self.asset_line = self.subchart.create_line('asset', price_line=False, color='#CB4335', style='solid')
+        self.asset_line.precision(4)
+        self.benchmark_line = self.subchart.create_line('benchmark', price_line=False, style='solid')
+        self.benchmark_line.precision(4)
 
         if not df_for_chart.empty:
             if 'hl1' not in df_for_chart.columns:
                 df_for_chart['hl1'] = 1
 
-            self.asset_line = self.subchart.create_line('asset', price_line=False, color='#CB4335', style='solid')
             self.asset_line.set(df_for_chart.loc[:, ["time", 'asset']])
-            
-            self.benchmark_line = self.subchart.create_line('benchmark', price_line=False, style='solid')
             self.benchmark_line.set(df_for_chart.loc[:, ["time", 'benchmark']])
-            
-            self.drawdown_hist = self.subchart.create_histogram('drawdown', price_line=False, scale_margin_top=0, scale_margin_bottom=0.5, color='rgba(98, 98, 98, 0.7)')
             self.drawdown_hist.set(df_for_chart.loc[:, ["time", 'drawdown']])
-
-            self.pos_hist = self.subchart.create_histogram('pos', price_line=False, scale_margin_top=0.6, scale_margin_bottom=0, color='rgba(135, 206, 250, 0.3)')
             self.pos_hist.set(df_for_chart.loc[:, ["time", 'pos']])
-
-            self.hl1_line = self.subchart.create_line('hl1', price_line=False, color='white', style='dashed')
             self.hl1_line.set(df_for_chart.loc[:, ["time", 'hl1']])
         else:
-            print("图表数据为空，无法设置子图表。")
+            print("初始图表数据为空，子图表将为空。")
 
-        asyncio.run(self.chart.show_async())
+        self.chart.show(block=True)
 
 def plot_interactive_chart(data: pd.DataFrame, trades: List, symbol: str, output_dir: str):
     chart = InteractiveChart(data, trades, symbol, output_dir)
