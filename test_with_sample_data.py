@@ -51,7 +51,7 @@ def generate_sample_lob_data(start_time: datetime, duration_hours: int = 6.5,
         # 生成十档数据
         row = {
             'datetime': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-            'timestamp': int(timestamp.timestamp())  # 使用本地时间生成Unix时间戳
+            'timestamp': int(timestamp.timestamp() - 8*60*60)  # 使用本地时间生成Unix时间戳
         }
         
         # 卖盘（从低到高）
@@ -106,7 +106,7 @@ def generate_sample_signal_data(start_time: datetime, duration_hours: int = 6.5,
     
     for timestamp in signal_times:
         # 使用本地时间生成Unix时间戳
-        utc_timestamp = int(timestamp.timestamp())
+        timestamp = int(timestamp.timestamp() - 8*60*60)
         
         # 生成随机信号（模拟策略逻辑）
         # 简单的趋势跟踪策略模拟
@@ -134,7 +134,7 @@ def generate_sample_signal_data(start_time: datetime, duration_hours: int = 6.5,
             prob_0 = 1 - prob_1
         
         data.append({
-            'timestamp': utc_timestamp,
+            'timestamp': timestamp,
             'target': float(target),
             'has_pos': float(current_position),
             '0': prob_0,

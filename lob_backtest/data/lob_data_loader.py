@@ -33,8 +33,8 @@ class LOBDataLoader:
             return None
 
         all_data = []
-        start_date = pd.to_datetime(start_timestamp, unit='s').date()
-        end_date = pd.to_datetime(end_timestamp, unit='s').date()
+        start_date = pd.to_datetime(start_timestamp, unit='s', origin='1970-01-01 08:00:00').date()
+        end_date = pd.to_datetime(end_timestamp, unit='s', origin='1970-01-01 08:00:00').date()
 
         for date_dir in sorted(data_root.iterdir()):
             if not date_dir.is_dir():
@@ -67,7 +67,7 @@ class LOBDataLoader:
         # 转换为时间戳并进行最终过滤
         # 移除毫秒，确保时间戳与信号数据对齐
         full_data['datetime'] = full_data['datetime'].dt.floor('S')
-        full_data['timestamp'] = full_data['datetime'].apply(lambda x: int(x.timestamp()))
+        full_data['timestamp'] = full_data['datetime'].apply(lambda x: int(x.timestamp() - 8*60*60))
         
         full_data = full_data[
             (full_data['timestamp'] >= start_timestamp) &
@@ -98,9 +98,7 @@ class LOBDataLoader:
 
             # 将时间字符串转换为无时区的datetime对象。
             # 后续调用 .timestamp() 时，Pandas/Python会隐式使用本地系统时区（北京时间）
-            # 来计算Unix时间戳，这符合项目要求。
-            # 将时间字符串转换为datetime对象，并明确指定为北京时间
-            data['datetime'] = pd.to_datetime(data['datetime'], errors='coerce').dt.tz_localize('Asia/Shanghai')
+            data['datetime'] = pd.to_datetime(data['datetime'])
             data = self._filter_trading_hours(data, "09:30", "15:00")
 
             if len(data) == 0 or self._check_limit_up_down(data):

@@ -33,7 +33,7 @@ class SignalDataLoader:
             
             # 添加时间列（北京时间）
             # 将Unix时间戳转换为无时区的datetime对象（本地时间）
-            data['datetime'] = pd.to_datetime(data['timestamp'], unit='s')
+            data['datetime'] = pd.to_datetime(data['timestamp'], origin='1970-01-01 08:00:00', unit='s')
             
             return data.sort_values('timestamp').reset_index(drop=True)
             

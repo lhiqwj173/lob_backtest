@@ -91,6 +91,9 @@ class LOBBacktester:
         print(f"LOB数据: {len(lob_data)} 条记录")
         print(f"信号数据: {len(signal_data)} 条记录")
 
+        # lob_data.to_csv(os.path.join('results', "lob_data.csv"), encoding='gbk')
+        # signal_data.to_csv(os.path.join('results', "signal_data.csv"), encoding='gbk')
+
         # 2. 数据对齐
         print("\n=== 数据对齐阶段 ===")
         aligned_data = self._align_data(lob_data, signal_data)
@@ -273,6 +276,10 @@ class LOBBacktester:
             signal_pos_0 = signal_data[signal_data['has_pos'] == 0].copy()
             signal_pos_1 = signal_data[signal_data['has_pos'] == 1].copy()
 
+            # lob_data.to_csv(os.path.join('results', "lob_data.csv"), encoding='gbk', index=False)
+            # signal_pos_0.to_csv(os.path.join('results', "signal_pos_0.csv"), encoding='gbk', index=False)
+            # signal_pos_1.to_csv(os.path.join('results', "signal_pos_1.csv"), encoding='gbk', index=False)
+
             # 2. 分别进行对齐
             aligned_df_0 = pd.merge_asof(
                 lob_data,
@@ -280,7 +287,7 @@ class LOBBacktester:
                 left_on='timestamp',
                 right_on='timestamp_pos0',
                 direction='nearest'
-            )
+            ).drop_duplicates(subset='timestamp_pos0', keep=False)
             
             aligned_df_1 = pd.merge_asof(
                 lob_data,
@@ -288,10 +295,14 @@ class LOBBacktester:
                 left_on='timestamp',
                 right_on='timestamp_pos1',
                 direction='nearest'
-            )
+            ).drop_duplicates(subset='timestamp_pos1', keep=False)
+
+            # aligned_df_0.to_csv(os.path.join('results', "aligned_df_0.csv"), encoding='gbk')
+            # aligned_df_1.to_csv(os.path.join('results', "aligned_df_1.csv"), encoding='gbk')
 
             # 3. 合并对齐结果
             aligned_df = pd.merge(aligned_df_0, aligned_df_1, on=list(lob_data.columns))
+            # aligned_df_1.to_csv(os.path.join('results', "aligned_df.csv"), encoding='gbk')
 
             # 将LOB和信号数据组织成回测循环所需的格式
             aligned_records = []
@@ -329,6 +340,8 @@ class LOBBacktester:
                     'signal_info_pos1': signal_info_pos1
                 })
             
+            # pd.DataFrame(aligned_records).to_csv(os.path.join('results', "all.csv"), encoding='gbk')
+
             return pd.DataFrame(aligned_records)
 
         except Exception as e:
