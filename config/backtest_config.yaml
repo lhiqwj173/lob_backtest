@@ -4,11 +4,11 @@
 # 数据源配置
 data:
   lob_data_path: "D:/L2_DATA_T0_ETF/his_data"  # 十档盘口数据根目录
-  signal_data_path: "D:\code\forecast_model\notebook\20250824_tcn_baseline3\20250824_tcn_baseline3_P100_TimeSeriesStaticModelx16_seed2_IDX4\model_best\val\513180_1724636126_1725605801.csv"  # 深度学习信号数据路径
+  signal_data_path: "D:\code\forecast_model\notebook\20250826_tcn_filt_days\20250826_filt_P100_200_seed1_IDX3\model_best\val\513180_1724637926_1725604181.csv"  # 深度学习信号数据路径
 
 # 信号配置
 signal:
-  source: "predict"  # target/predict - 信号源选择
+  source: "target"  # target/predict - 信号源选择
   predict_threshold: "max"  # max/数值 - 预测触发阈值策略
   
 # {{ AURA-X | Action: Modify | Reason: 修复数值类型，确保YAML正确解析数值 | Approval: Cunzhi(ID:1735632000) }}
