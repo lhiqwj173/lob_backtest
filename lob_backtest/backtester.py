@@ -375,6 +375,9 @@ class LOBBacktester:
         rest_force_close = self.config.get('trading.rest_force_close', True)
         close_force_close = self.config.get('trading.close_force_close', True)
 
+        # 预处理时间戳，用于检查未来tick
+        timestamps = aligned_data['timestamp'].tolist()
+
         for i, row in aligned_data.iterrows():
             timestamp = row['timestamp']
             lob_snapshot = row['lob_snapshot']
@@ -388,7 +391,8 @@ class LOBBacktester:
             current_time = datetime.fromtimestamp(timestamp)
 
             # --- 强制平仓及交易时段控制逻辑 ---
-            is_prohibited = self._is_trading_prohibited(current_time, rest_force_close, close_force_close)
+            is_prohibited = self._is_trading_prohibited(current_time, rest_force_close, close_force_close, i, timestamps)
+            
             has_position = self.engine.position.volume > 0
 
             if is_prohibited:
@@ -498,7 +502,8 @@ class LOBBacktester:
         print(f"胜率: {metrics.get('win_rate', 0):.2%}")
         print(f"盈亏比: {metrics.get('profit_factor', 0):.2f}")
 
-    def _is_trading_prohibited(self, current_time: datetime, rest_force_close: bool, close_force_close: bool) -> bool:
+    def _is_trading_prohibited(self, current_time: datetime, rest_force_close: bool, close_force_close: bool,
+                             current_index: int = None, timestamps: list = None) -> bool:
         """判断当前时间是否处于禁止开仓的时段"""
         current_t = current_time.time()
 
@@ -512,5 +517,20 @@ class LOBBacktester:
             return True
         if close_force_close and is_near_close:
             return True
+            
+        # 检查之后第5个tick是否是下午/不存在
+        if current_index is not None and timestamps is not None:
+            timestamp_count = len(timestamps)
+            if current_index + 5 < timestamp_count:
+                future_timestamp = timestamps[current_index + 5]
+                future_time = datetime.fromtimestamp(future_timestamp)
+                # 检查是否是下午时段 (> 12:00)
+                future_time_t = future_time.time()
+                is_afternoon = future_time_t > time(12, 0, 0)
+                if is_afternoon:
+                    return True
+            else:
+                # 之后第5个tick不存在
+                return True
             
         return False
