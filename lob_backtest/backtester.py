@@ -216,9 +216,9 @@ class LOBBacktester:
                                 tolerance=pd.Timedelta('3s')
                             )
                     
-                    # 填充缺失值 
-                    asset_history_df.ffill(inplace=True)
-                    asset_history_df.bfill(inplace=True)
+                    # 不填充缺失值，保持NaN值以正确表示重复时间戳的信号
+                    # asset_history_df.ffill(inplace=True)
+                    # asset_history_df.bfill(inplace=True)
 
                     print("正在启动交互式图表...")
                     plot_interactive_chart(
@@ -281,13 +281,14 @@ class LOBBacktester:
             # signal_pos_1.to_csv(os.path.join('results', "signal_pos_1.csv"), encoding='gbk', index=False)
 
             # 2. 分别进行对齐
+            # 先进行合并
             aligned_df_0 = pd.merge_asof(
                 lob_data,
                 signal_pos_0.add_suffix('_pos0'),
                 left_on='timestamp',
                 right_on='timestamp_pos0',
                 direction='nearest'
-            ).drop_duplicates(subset='timestamp_pos0', keep=False)
+            )
             
             aligned_df_1 = pd.merge_asof(
                 lob_data,
@@ -295,7 +296,24 @@ class LOBBacktester:
                 left_on='timestamp',
                 right_on='timestamp_pos1',
                 direction='nearest'
-            ).drop_duplicates(subset='timestamp_pos1', keep=False)
+            )
+            
+            # 将重复时间戳的信号值改为NaN，而不是删除重复项
+            # 对于signal_pos0
+            if 'timestamp_pos0' in aligned_df_0.columns:
+                # 标记所有重复的时间戳（不保留任何重复项）
+                duplicated_timestamps_0 = aligned_df_0['timestamp_pos0'].duplicated(keep=False)
+                # 将signal_pos0和target_pos0列设为NaN
+                aligned_df_0.loc[duplicated_timestamps_0, 'signal_pos0'] = np.nan
+                aligned_df_0.loc[duplicated_timestamps_0, 'target_pos0'] = np.nan
+            
+            # 对于signal_pos1
+            if 'timestamp_pos1' in aligned_df_1.columns:
+                # 标记所有重复的时间戳（不保留任何重复项）
+                duplicated_timestamps_1 = aligned_df_1['timestamp_pos1'].duplicated(keep=False)
+                # 将signal_pos1和target_pos1列设为NaN
+                aligned_df_1.loc[duplicated_timestamps_1, 'signal_pos1'] = np.nan
+                aligned_df_1.loc[duplicated_timestamps_1, 'target_pos1'] = np.nan
 
             # aligned_df_0.to_csv(os.path.join('results', "aligned_df_0.csv"), encoding='gbk')
             # aligned_df_1.to_csv(os.path.join('results', "aligned_df_1.csv"), encoding='gbk')
@@ -395,8 +413,8 @@ class LOBBacktester:
                 'datetime': datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S.%f'),
                 'timestamp': timestamp,
                 'engine_has_pos': engine_has_pos,
-                'target': chosen_signal_info.get('target', -1),
-                'predict': chosen_signal_info.get('signal', -1),
+                'target': 0 if signal_info_pos0['target']==0 else 1 if signal_info_pos1['target']==1 else np.nan,
+                'predict': 0 if signal_info_pos0['signal']==0 else 1 if signal_info_pos1['signal']==1 else np.nan,
                 'signal_has_pos': chosen_signal_info.get('has_pos', -1),
                 'ask1_price': lob_snapshot['asks'][0][0] if lob_snapshot['asks'] else 0,
                 'bid1_price': lob_snapshot['bids'][0][0] if lob_snapshot['bids'] else 0,
